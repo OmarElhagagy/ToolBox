@@ -1,4 +1,4 @@
-# Filtrawy <img width="50" hieght="50" src="https://github.com/aboelkassem/Filtrawy/blob/main/test-images/icon.png">
+# ToolBox <img width="50" hieght="50" src="https://github.com/aboelkassem/Filtrawy/blob/main/test-images/icon.png">
 a GUI application to apply basic image processing filters built with python, openCV and tkinter 
 
 # Features
