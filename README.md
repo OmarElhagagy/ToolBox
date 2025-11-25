@@ -27,4 +27,3 @@ a GUI application to apply basic image processing filters built with python, ope
 <img src="https://github.com/aboelkassem/Filtrawy/blob/main/test-images/example2.PNG">
 <img src="https://github.com/aboelkassem/Filtrawy/blob/main/test-images/example3.PNG">
 <img src="https://github.com/aboelkassem/Filtrawy/blob/main/test-images/Example4.PNG">
-<img src="https://github.com/aboelkassem/Filtrawy/blob/main/test-images/example5.PNG">
