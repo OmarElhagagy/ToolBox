@@ -5,16 +5,29 @@ import PIL.Image
 import PIL.ImageTk
 import numpy as np
 from matplotlib import pyplot as plt
+try:
+    import pytesseract
+    from pytesseract import Output
+    path_to_tesseract = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    pytesseract.pytesseract.tesseract_cmd = path_to_tesseract
+    TESSERACT_AVAILABLE = True
+except ImportError:
+    TESSERACT_AVAILABLE = False
+    print("Warning: pytesseract library not found. Run: pip install pytesseract")
+except Exception as e:
+    TESSERACT_AVAILABLE = False
+    print(f"Warning: Tesseract config failed: {e}")
 
 class ImageCap:
     def __init__(self, window=None):
         self.window = window
-        self.all_filters = {} # Initialize to empty dict to prevent crashes
+        self.all_filters = {}
+        self.ocr_text = ""
+        self.ocr_data = None
         
         img_path = tkinter.filedialog.askopenfilename()
         if len(img_path) > 0:
             self.original_image = cv2.imread(img_path)
-            # Convert BGR to RGB
             self.original_image = cv2.cvtColor(self.original_image, cv2.COLOR_BGR2RGB)
             self.current_image = self.original_image.copy()
             self.filtered_image = self.original_image.copy()
@@ -25,11 +38,9 @@ class ImageCap:
             self.resize_dims = (400, 400)
             self.update_panel(self.original_image, self.original_image)
         else:
-            # Handle case where user cancels file selection
             self.original_image = None
 
     def update_panel(self, original_image, filtered_image):
-        # Ensure images are RGB and uint8
         if len(original_image.shape) == 2:
             original_image = cv2.cvtColor(original_image, cv2.COLOR_GRAY2RGB)
         if len(filtered_image.shape) == 2:
@@ -38,7 +49,6 @@ class ImageCap:
         original_image = np.clip(original_image, 0, 255).astype(np.uint8)
         filtered_image = np.clip(filtered_image, 0, 255).astype(np.uint8)
         
-        # Resize for display
         original_pil = PIL.Image.fromarray(original_image)
         filtered_pil = PIL.Image.fromarray(filtered_image)
         original_pil = original_pil.resize((400, 400), PIL.Image.LANCZOS)
@@ -46,13 +56,11 @@ class ImageCap:
         original_tk = PIL.ImageTk.PhotoImage(original_pil)
         filtered_tk = PIL.ImageTk.PhotoImage(filtered_pil)
 
-        # Use self.window as the master for the labels
         master = self.window if self.window is not None else None
 
         if self.panelA is None or self.panelB is None:
             self.panelA = tkinter.Label(master, image=original_tk)
             self.panelA.image = original_tk
-            # These grid positions (Row 3, Col 2 & 3) place the images to the right/bottom of your controls
             self.panelA.grid(row=3, column=2, padx=10, pady=10)
             
             self.panelB = tkinter.Label(master, image=filtered_tk)
@@ -69,6 +77,8 @@ class ImageCap:
             return
         self.current_image = self.original_image.copy()
         self.filtered_image = self.original_image.copy()
+        self.ocr_text = ""
+        self.ocr_data = None
         self.update_panel(self.original_image, self.original_image)
 
     def back_to_previous(self):
@@ -97,18 +107,115 @@ class ImageCap:
         plt.xlim([0, 256])
         plt.show()
 
+    def preprocess_for_ocr(self, image):
+        """Preprocess image for better OCR results"""
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = image.copy()
+        
+        # Denoise
+        denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
+        
+        # Adaptive thresholding for better text contrast
+        thresh = cv2.adaptiveThreshold(denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                                       cv2.THRESH_BINARY, 11, 2)
+        
+        # Morphological operations to clean up
+        kernel = np.ones((1, 1), np.uint8)
+        processed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+        
+        return processed
+
+    def perform_ocr(self, lang='eng', preprocess=True):
+        """Extract text from image using Tesseract OCR"""
+        if not TESSERACT_AVAILABLE:
+            return "Tesseract OCR not installed. Install: pip install pytesseract"
+        
+        if not hasattr(self, 'current_image') or self.current_image is None:
+            return "No image loaded"
+        
+        try:
+            # Preprocess image if requested
+            if preprocess:
+                img_for_ocr = self.preprocess_for_ocr(self.current_image)
+            else:
+                if len(self.current_image.shape) == 3:
+                    img_for_ocr = cv2.cvtColor(self.current_image, cv2.COLOR_RGB2GRAY)
+                else:
+                    img_for_ocr = self.current_image
+            
+            # Perform OCR with detailed data
+            custom_config = r'--oem 3 --psm 6'
+            self.ocr_data = pytesseract.image_to_data(img_for_ocr, lang=lang, 
+                                                       config=custom_config, 
+                                                       output_type=Output.DICT)
+            
+            # Extract text
+            self.ocr_text = pytesseract.image_to_string(img_for_ocr, lang=lang, 
+                                                         config=custom_config)
+            
+            return self.ocr_text.strip() if self.ocr_text else "No text detected"
+            
+        except Exception as e:
+            return f"OCR Error: {str(e)}"
+
+    def draw_ocr_boxes(self, confidence_threshold=60):
+        """Draw bounding boxes around detected text"""
+        if not TESSERACT_AVAILABLE or self.ocr_data is None:
+            return self.current_image.copy()
+        
+        img_with_boxes = self.current_image.copy()
+        if len(img_with_boxes.shape) == 2:
+            img_with_boxes = cv2.cvtColor(img_with_boxes, cv2.COLOR_GRAY2RGB)
+        
+        n_boxes = len(self.ocr_data['text'])
+        for i in range(n_boxes):
+            if int(self.ocr_data['conf'][i]) > confidence_threshold:
+                (x, y, w, h) = (self.ocr_data['left'][i], 
+                               self.ocr_data['top'][i], 
+                               self.ocr_data['width'][i], 
+                               self.ocr_data['height'][i])
+                
+                # Draw rectangle
+                cv2.rectangle(img_with_boxes, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                
+                # Add confidence text
+                text = self.ocr_data['text'][i]
+                if text.strip():
+                    conf = int(self.ocr_data['conf'][i])
+                    label = f"{conf}%"
+                    cv2.putText(img_with_boxes, label, (x, y - 5), 
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
+        
+        return img_with_boxes
+
     def update(self):
         if not hasattr(self, 'original_image') or self.original_image is None:
             return
             
         self.previous_image = self.current_image.copy()
         
-        # Helper to safely get filter status
         def get_f(name):
             return self.all_filters.get(name, False)
 
         if get_f('color'):
             self.filtered_image = self.current_image.copy()
+
+        elif get_f('ocr_extract'):
+            text = self.perform_ocr(preprocess=True)
+            print(f"\n=== OCR Results ===\n{text}\n=================\n")
+            self.filtered_image = self.current_image.copy()
+
+        elif get_f('ocr_boxes'):
+            self.perform_ocr(preprocess=True)
+            self.filtered_image = self.draw_ocr_boxes(confidence_threshold=60)
+            self.current_image = self.filtered_image.copy()
+
+        elif get_f('ocr_preprocess'):
+            processed = self.preprocess_for_ocr(self.current_image)
+            self.filtered_image = cv2.cvtColor(processed, cv2.COLOR_GRAY2RGB)
+            self.current_image = self.filtered_image.copy()
 
         elif get_f('gray'):
             if len(self.current_image.shape) == 3:

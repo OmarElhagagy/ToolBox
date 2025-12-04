@@ -13,13 +13,14 @@ path = cwd + folder
 if not os.path.exists(path):
     os.makedirs(path)
 
-# Extended filter list
+# Extended filter list - Added OCR filters here
 fil = ['color', 'gray', 'threshold', 'adaptive_threshold', 'otsu_threshold', 'increaseContrast', 'decreaseContrast', 
        'contrast_stretch', 'logTransformation', 'powerLowEnhancement', 'gamma_0_5', 'gamma_1_5', 'negativeEnhancement', 
        'gauss', 'sobel', 'laplace', 'canny', 'min', 'max', 'median', 'average', 'unsharp', 'prewitt', 
        'histogramEqualization', 'adaptive_hist_eq', 'sharpen', 'smooth', 'flip_horizontal', 'flip_vertical',
        'rotate', 'resize', 'add_noise', 'bit_plane', 'morph_open', 'morph_close', 'erosion', 'dilation',
-       'bgr_to_rgb', 'bgr_to_hsv', 'bgr_to_lab', 'find_contours', 'template_match']
+       'bgr_to_rgb', 'bgr_to_hsv', 'bgr_to_lab', 'find_contours', 'template_match',
+       'ocr_extract', 'ocr_boxes', 'ocr_preprocess'] # <--- OCR keys added
 
 filter_dic = {}
 
@@ -52,6 +53,7 @@ class App:
         self.threshold_frame = ttk.Frame(self.notebook)
         self.color_frame = ttk.Frame(self.notebook)
         self.advanced_frame = ttk.Frame(self.notebook)
+        self.ocr_frame = ttk.Frame(self.notebook) # <--- New OCR Frame
         
         self.notebook.add(self.basic_frame, text="Basic")
         self.notebook.add(self.transform_frame, text="Transforms")
@@ -61,6 +63,7 @@ class App:
         self.notebook.add(self.threshold_frame, text="Threshold")
         self.notebook.add(self.color_frame, text="Color")
         self.notebook.add(self.advanced_frame, text="Advanced")
+        self.notebook.add(self.ocr_frame, text="OCR") # <--- Add OCR Tab
         
         self.setup_basic_tab()
         self.setup_transform_tab()
@@ -70,6 +73,7 @@ class App:
         self.setup_threshold_tab()
         self.setup_color_tab()
         self.setup_advanced_tab()
+        self.setup_ocr_tab() # <--- Setup OCR controls
         
         # Main control buttons
         control_frame = ttk.Frame(window)
@@ -161,6 +165,13 @@ class App:
     def setup_advanced_tab(self):
         ttk.Button(self.advanced_frame, text="Find Contours", command=self.find_contours).grid(row=0, column=0, padx=5, pady=5)
         ttk.Button(self.advanced_frame, text="Template Matching", command=self.template_matching).grid(row=0, column=1, padx=5, pady=5)
+    
+    # New OCR Setup
+    def setup_ocr_tab(self):
+        ttk.Label(self.ocr_frame, text="OCR Operations (Requires Tesseract)").grid(row=0, column=0, columnspan=2, padx=5, pady=5)
+        ttk.Button(self.ocr_frame, text="Extract Text (to Console)", command=self.ocr_extract).grid(row=1, column=0, padx=5, pady=5)
+        ttk.Button(self.ocr_frame, text="Draw Text Boxes", command=self.ocr_draw_boxes).grid(row=1, column=1, padx=5, pady=5)
+        ttk.Button(self.ocr_frame, text="Show Preprocessed Image", command=self.ocr_preprocess).grid(row=2, column=0, padx=5, pady=5)
 
     def select_video(self):
         # self.video_source = 0
@@ -171,7 +182,6 @@ class App:
         pass
 
     def select_image(self):
-        # HERE IS THE MAIN FIX: Passing self.window to ImageCap
         self.img = ImageCap(self.window)
         
         # Check if user actually selected an image (didn't cancel)
@@ -464,5 +474,20 @@ class App:
             self.img.all_filters = select_filter('template_match', True)
             self.img.update()
 
+    # OCR Callback Methods
+    def ocr_extract(self):
+        if self.isImageInstantiated:
+            self.img.all_filters = select_filter('ocr_extract', True)
+            self.img.update()
+
+    def ocr_draw_boxes(self):
+        if self.isImageInstantiated:
+            self.img.all_filters = select_filter('ocr_boxes', True)
+            self.img.update()
+
+    def ocr_preprocess(self):
+        if self.isImageInstantiated:
+            self.img.all_filters = select_filter('ocr_preprocess', True)
+            self.img.update()
 
 App(tk.Tk(), 'Enhanced ToolBox')
