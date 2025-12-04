@@ -86,6 +86,22 @@ class App:
         ttk.Button(control_frame, text="Back", command=self.back).pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="Close", command=window.destroy).pack(side=tk.LEFT, padx=5)
         
+        # OCR Text Display - Initially hidden
+        ocr_display_frame = ttk.LabelFrame(window, text="Extracted Text & Language")
+        self.ocr_display_frame = ocr_display_frame  # Save reference
+
+        self.ocr_text_display = tk.Text(ocr_display_frame, width=40, height=20, wrap=tk.WORD)
+        self.ocr_text_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        scrollbar = ttk.Scrollbar(ocr_display_frame, command=self.ocr_text_display.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.ocr_text_display.config(yscrollcommand=scrollbar.set)
+
+        # Hide by default; show when OCR tab is selected
+        self.ocr_display_frame.grid_remove()
+        # Bind tab change event
+        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
+
         self.delay = 15
         try:
             self.window.tk.call('wm', 'iconphoto', self.window._w, tk.PhotoImage(file='test-images/icon.png'))
@@ -168,10 +184,23 @@ class App:
     
     # New OCR Setup
     def setup_ocr_tab(self):
-        ttk.Label(self.ocr_frame, text="OCR Operations (Requires Tesseract)").grid(row=0, column=0, columnspan=2, padx=5, pady=5)
-        ttk.Button(self.ocr_frame, text="Extract Text (to Console)", command=self.ocr_extract).grid(row=1, column=0, padx=5, pady=5)
+        ttk.Label(self.ocr_frame, text="OCR Operations").grid(row=0, column=0, columnspan=2, padx=5, pady=5)
+        ttk.Button(self.ocr_frame, text="Extract Text", command=self.ocr_extract).grid(row=1, column=0, padx=5, pady=5)
         ttk.Button(self.ocr_frame, text="Draw Text Boxes", command=self.ocr_draw_boxes).grid(row=1, column=1, padx=5, pady=5)
         ttk.Button(self.ocr_frame, text="Show Preprocessed Image", command=self.ocr_preprocess).grid(row=2, column=0, padx=5, pady=5)
+
+
+    def on_tab_changed(self, event):
+        current_tab = self.notebook.select()
+        tab_text = self.notebook.tab(current_tab, "text")
+        
+        if tab_text == "OCR":
+            # Show OCR text panel when OCR tab is selected
+            self.ocr_display_frame.grid(row=3, column=0, padx=10, pady=10, sticky="nsew")
+        else:
+            # Hide otherwise
+            self.ocr_display_frame.grid_remove()
+
 
     def select_video(self):
         # self.video_source = 0
@@ -479,6 +508,15 @@ class App:
         if self.isImageInstantiated:
             self.img.all_filters = select_filter('ocr_extract', True)
             self.img.update()
+
+            detected_lang = self.img.detect_language()
+            self.ocr_text_display.delete(1.0, tk.END)
+            self.ocr_text_display.insert(1.0, f"🌐 Language: {detected_lang}\n\n{'='*40}\n\n{self.img.ocr_text}")
+
+        if hasattr(self, 'ocr_text_display'):
+            detected_lang = self.img.detect_language()
+            self.ocr_text_display.delete(1.0, tk.END)
+            self.ocr_text_display.insert(1.0, f"Detected Language: {detected_lang}\n\n{self.img.ocr_text}")
 
     def ocr_draw_boxes(self):
         if self.isImageInstantiated:

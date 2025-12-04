@@ -6,6 +6,14 @@ import PIL.ImageTk
 import numpy as np
 from matplotlib import pyplot as plt
 try:
+    from langdetect import detect, DetectorFactory
+    DetectorFactory.seed = 0
+    LANGDETECT_AVAILABLE = True
+except ImportError:
+    LANGDETECT_AVAILABLE = False
+
+
+try:
     import pytesseract
     from pytesseract import Output
     path_to_tesseract = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -71,6 +79,23 @@ class ImageCap:
             self.panelB.configure(image=filtered_tk)
             self.panelA.image = original_tk
             self.panelB.image = filtered_tk
+
+    def detect_language(self):
+        """Detect language of extracted OCR text"""
+        if not globals().get('LANGDETECT_AVAILABLE', False):
+            return "Unknown (langdetect not installed)"
+        if not self.ocr_text or len(self.ocr_text.strip()) < 3:
+            return "Unknown (text too short)"
+        try:
+            lang_code = detect(self.ocr_text)
+            lang_names = {
+                'ar': 'Arabic', 'en': 'English', 'fr': 'French', 
+                'de': 'German', 'es': 'Spanish', 'zh-cn': 'Chinese',
+                'ja': 'Japanese', 'ru': 'Russian', 'it': 'Italian'
+            }
+            return lang_names.get(lang_code, lang_code)
+        except:
+            return "Unknown"
 
     def reset_to_original(self):
         if not hasattr(self, 'original_image') or self.original_image is None:
