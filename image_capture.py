@@ -32,6 +32,8 @@ class ImageCap:
         self.all_filters = {}
         self.ocr_text = ""
         self.ocr_data = None
+        self.sobel_direction = 'all'  # New: for sobel direction
+        self.median_mode = 'median'   # New: for median/min/max
         
         img_path = tkinter.filedialog.askopenfilename()
         if len(img_path) > 0:
@@ -59,8 +61,53 @@ class ImageCap:
         
         original_pil = PIL.Image.fromarray(original_image)
         filtered_pil = PIL.Image.fromarray(filtered_image)
-        original_pil = original_pil.resize((400, 400), PIL.Image.LANCZOS)
-        filtered_pil = filtered_pil.resize((400, 400), PIL.Image.LANCZOS)
+
+        # Size displayed images so the entire image is visible (fit within panel), do NOT upscale
+        master = self.window if self.window is not None else None
+
+        # Determine actual available panel size. Prefer the label widget's allocated size
+        # (if it exists) so we fit images exactly in the visible area; otherwise fall back
+        # to an estimate based on window size.
+        try:
+            master.update_idletasks()
+        except Exception:
+            pass
+
+        # Default estimates
+        try:
+            win_w = master.winfo_width() or 0
+            win_h = master.winfo_height() or 0
+        except Exception:
+            win_w = 0
+            win_h = 0
+
+        # If panels already exist use their actual sizes
+        if hasattr(self, 'panelA') and self.panelA is not None:
+            try:
+                panel_w = max(100, self.panelA.winfo_width())
+                panel_h = max(100, self.panelA.winfo_height())
+            except Exception:
+                panel_w = max(200, int(win_w * 0.42))
+                panel_h = max(200, int(win_h * 0.6))
+        else:
+            if win_w <= 1:
+                panel_w = 400
+                panel_h = 400
+            else:
+                panel_w = max(200, int(win_w * 0.42))
+                panel_h = max(200, int(win_h * 0.6))
+
+        def fit_within(max_w, max_h, img_w, img_h, img):
+            """Scale image to fit entirely within (max_w,max_h) and do not upscale smaller images."""
+            if img_w == 0 or img_h == 0:
+                return img.resize((max_w, max_h), PIL.Image.LANCZOS)
+            scale = min(max_w / img_w, max_h / img_h, 1.0)
+            new_w = max(1, int(img_w * scale))
+            new_h = max(1, int(img_h * scale))
+            return img.resize((new_w, new_h), PIL.Image.LANCZOS)
+
+        original_pil = fit_within(panel_w, panel_h, *original_pil.size, original_pil)
+        filtered_pil = fit_within(panel_w, panel_h, *filtered_pil.size, filtered_pil)
         original_tk = PIL.ImageTk.PhotoImage(original_pil)
         filtered_tk = PIL.ImageTk.PhotoImage(filtered_pil)
 
@@ -69,11 +116,19 @@ class ImageCap:
         if self.panelA is None or self.panelB is None:
             self.panelA = tkinter.Label(master, image=original_tk)
             self.panelA.image = original_tk
-            self.panelA.grid(row=3, column=2, padx=10, pady=10)
+            # Place image panels in the main window grid; allow them to expand
+            self.panelA.grid(row=3, column=2, padx=10, pady=10, sticky='nsew')
             
             self.panelB = tkinter.Label(master, image=filtered_tk)
             self.panelB.image = filtered_tk
-            self.panelB.grid(row=3, column=3, padx=10, pady=10)
+            self.panelB.grid(row=3, column=3, padx=10, pady=10, sticky='nsew')
+            # Ensure parent grid allows expansion for these cells
+            try:
+                master.grid_columnconfigure(2, weight=1)
+                master.grid_columnconfigure(3, weight=1)
+                master.grid_rowconfigure(3, weight=1)
+            except Exception:
+                pass
         else:
             self.panelA.configure(image=original_tk)
             self.panelB.configure(image=filtered_tk)
@@ -469,9 +524,55 @@ class ImageCap:
             self.current_image = self.filtered_image.copy()
 
         elif get_f('add_noise'):
-            noise = np.random.normal(0, 25, self.current_image.shape)
-            noisy = self.current_image.astype(np.float64) + noise
-            self.filtered_image = np.clip(noisy, 0, 255).astype(np.uint8)
+            # Salt and pepper noise
+            noise_img = self.current_image.copy()
+            prob = 0.05  # probability of noise
+            
+            # Salt noise (white)
+            salt = np.random.random(self.current_image.shape[:2]) < prob/2
+            noise_img[salt] = 255
+            
+            # Pepper noise (black)
+            pepper = np.random.random(self.current_image.shape[:2]) < prob/2
+            noise_img[pepper] = 0
+            
+            self.filtered_image = noise_img
+            self.current_image = self.filtered_image.copy()
+
+        elif get_f('cone'):
+            if len(self.current_image.shape) == 3:
+                gray = cv2.cvtColor(self.current_image, cv2.COLOR_RGB2GRAY)
+            else:
+                gray = self.current_image
+            # Cone filter - approximated using weighted average of median and gaussian
+            median_filtered = cv2.medianBlur(gray, 5)
+            gaussian_filtered = cv2.GaussianBlur(gray, (5, 5), 0)
+            cone_filtered = cv2.addWeighted(median_filtered, 0.7, gaussian_filtered, 0.3, 0)
+            self.filtered_image = cv2.cvtColor(cone_filtered, cv2.COLOR_GRAY2RGB)
+            self.current_image = self.filtered_image.copy()
+
+        elif get_f('paramedian'):
+            if len(self.current_image.shape) == 3:
+                gray = cv2.cvtColor(self.current_image, cv2.COLOR_RGB2GRAY)
+            else:
+                gray = self.current_image
+            # Paramedian filter (hybrid of median and mean)
+            median_filtered = cv2.medianBlur(gray, 5)
+            mean_filtered = cv2.blur(gray, (5, 5))
+            paramedian = cv2.addWeighted(median_filtered, 0.5, mean_filtered, 0.5, 0)
+            self.filtered_image = cv2.cvtColor(paramedian, cv2.COLOR_GRAY2RGB)
+            self.current_image = self.filtered_image.copy()
+
+        elif get_f('circular'):
+            if len(self.current_image.shape) == 3:
+                gray = cv2.cvtColor(self.current_image, cv2.COLOR_RGB2GRAY)
+            else:
+                gray = self.current_image
+            # Circular median filter using morphological operations
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+            # Apply median filter
+            circular_filtered = cv2.medianBlur(gray, 7)
+            self.filtered_image = cv2.cvtColor(circular_filtered, cv2.COLOR_GRAY2RGB)
             self.current_image = self.filtered_image.copy()
 
         elif get_f('bit_plane'):
@@ -482,6 +583,8 @@ class ImageCap:
             bit_plane_7 = ((gray >> 7) & 1) * 255
             self.filtered_image = cv2.cvtColor(bit_plane_7, cv2.COLOR_GRAY2RGB)
             self.current_image = self.filtered_image.copy()
+        
+        
 
         elif get_f('bgr_to_rgb'):
             if len(self.current_image.shape) == 3:

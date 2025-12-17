@@ -20,7 +20,7 @@ fil = ['color', 'gray', 'threshold', 'adaptive_threshold', 'otsu_threshold', 'in
        'histogramEqualization', 'adaptive_hist_eq', 'sharpen', 'smooth', 'flip_horizontal', 'flip_vertical',
        'rotate', 'resize', 'add_noise', 'bit_plane', 'morph_open', 'morph_close', 'erosion', 'dilation',
        'bgr_to_rgb', 'bgr_to_hsv', 'bgr_to_lab', 'find_contours', 'template_match',
-       'ocr_extract', 'ocr_boxes', 'ocr_preprocess'] # <--- OCR keys added
+       'ocr_extract', 'ocr_boxes', 'ocr_preprocess', 'cone', 'paramedian', 'circular']
 
 filter_dic = {}
 
@@ -42,7 +42,21 @@ class App:
         
         # Create notebook for tabs
         self.notebook = ttk.Notebook(window)
-        self.notebook.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        # Let the notebook span the full width so internal rows/cols can expand
+        self.notebook.grid(row=0, column=0, columnspan=4, sticky="nsew", padx=10, pady=10)
+
+        # Configure main window grid so lower widgets (images, OCR panel) can expand when maximized
+        # Rows: 0 = notebook, 1 = controls, 3 = image / OCR area
+        self.window.grid_rowconfigure(0, weight=1)
+        self.window.grid_rowconfigure(1, weight=0)
+        self.window.grid_rowconfigure(2, weight=0)
+        self.window.grid_rowconfigure(3, weight=1)
+
+        # Columns: allow left OCR panel and right image columns to expand
+        for c in (0, 2, 3):
+            self.window.grid_columnconfigure(c, weight=1)
+        # keep column 1 reserved for spacing / controls
+        self.window.grid_columnconfigure(1, weight=0)
         
         # Create frames for different categories
         self.basic_frame = ttk.Frame(self.notebook)
@@ -77,7 +91,8 @@ class App:
         
         # Main control buttons
         control_frame = ttk.Frame(window)
-        control_frame.grid(row=1, column=0, pady=10)
+        # Put controls across the top; span columns so layout doesn't push other widgets
+        control_frame.grid(row=1, column=0, columnspan=4, pady=10, sticky='ew')
         
         ttk.Button(control_frame, text="Choose Image", command=self.select_image).pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="Open Camera", command=self.select_video).pack(side=tk.LEFT, padx=5)
@@ -144,16 +159,51 @@ class App:
         ttk.Button(self.transform_frame, text="Bit Plane Slicing", command=self.bit_plane_slicing).grid(row=4, column=0, padx=5, pady=5)
 
     def setup_filter_tab(self):
-        ttk.Button(self.filter_frame, text="Gaussian Blur", command=self.gauss_filter).grid(row=0, column=0, padx=5, pady=5)
-        ttk.Button(self.filter_frame, text="Median Blur", command=self.median_filter).grid(row=0, column=1, padx=5, pady=5)
-        ttk.Button(self.filter_frame, text="Average Blur", command=self.average_filter).grid(row=1, column=0, padx=5, pady=5)
-        ttk.Button(self.filter_frame, text="Sobel Edge", command=self.sobel_filter).grid(row=1, column=1, padx=5, pady=5)
-        ttk.Button(self.filter_frame, text="Laplacian Edge", command=self.laplace_filter).grid(row=2, column=0, padx=5, pady=5)
-        ttk.Button(self.filter_frame, text="Canny Edge", command=self.canny_edge).grid(row=2, column=1, padx=5, pady=5)
-        ttk.Button(self.filter_frame, text="Prewitt Edge", command=self.prewitt_filter).grid(row=3, column=0, padx=5, pady=5)
-        ttk.Button(self.filter_frame, text="Sharpen", command=self.sharpen).grid(row=3, column=1, padx=5, pady=5)
-        ttk.Button(self.filter_frame, text="Unsharp Mask", command=self.unsharp_filter).grid(row=4, column=0, padx=5, pady=5)
-        ttk.Button(self.filter_frame, text="Smooth", command=self.smooth).grid(row=4, column=1, padx=5, pady=5)
+        # Stabilize the grid for the filter frame to avoid overlapping controls
+        for c in range(2):
+            self.filter_frame.grid_columnconfigure(c, weight=1, minsize=140)
+        for r in range(8):
+            self.filter_frame.grid_rowconfigure(r, minsize=48)
+
+        # Row 0: Gaussian + Median options
+        ttk.Button(self.filter_frame, text="Gaussian Blur", command=self.gauss_filter).grid(row=0, column=0, padx=8, pady=6, sticky='w')
+
+        # Median filter with options (placed to the right of Gaussian)
+        median_frame = ttk.LabelFrame(self.filter_frame, text="Median Filter Options")
+        median_frame.grid(row=0, column=1, padx=8, pady=6, sticky="nsew")
+        self.median_var = tk.StringVar(value="median")
+        ttk.Radiobutton(median_frame, text="Median", variable=self.median_var, value="median").grid(row=0, column=0, padx=4, pady=2)
+        ttk.Radiobutton(median_frame, text="Min", variable=self.median_var, value="min").grid(row=0, column=1, padx=4, pady=2)
+        ttk.Radiobutton(median_frame, text="Max", variable=self.median_var, value="max").grid(row=0, column=2, padx=4, pady=2)
+        ttk.Button(median_frame, text="Apply", command=self.median_filter).grid(row=0, column=3, padx=4, pady=2)
+
+        # Row 1: Average blur and Sobel options
+        ttk.Button(self.filter_frame, text="Average Blur", command=self.average_filter).grid(row=1, column=0, padx=8, pady=6, sticky='w')
+        sobel_frame = ttk.LabelFrame(self.filter_frame, text="Sobel Edge Detection")
+        sobel_frame.grid(row=1, column=1, padx=8, pady=6, sticky="nsew")
+        self.sobel_var = tk.StringVar(value="all")
+        ttk.Radiobutton(sobel_frame, text="Horizontal", variable=self.sobel_var, value="horizontal").grid(row=0, column=0, padx=3, pady=2)
+        ttk.Radiobutton(sobel_frame, text="Vertical", variable=self.sobel_var, value="vertical").grid(row=0, column=1, padx=3, pady=2)
+        ttk.Radiobutton(sobel_frame, text="Diagonal", variable=self.sobel_var, value="diagonal").grid(row=0, column=2, padx=3, pady=2)
+        ttk.Radiobutton(sobel_frame, text="All", variable=self.sobel_var, value="all").grid(row=0, column=3, padx=3, pady=2)
+        ttk.Button(sobel_frame, text="Apply", command=self.sobel_filter).grid(row=0, column=4, padx=4, pady=2)
+
+        # Row 2: Laplacian & Canny
+        ttk.Button(self.filter_frame, text="Laplacian Edge", command=self.laplace_filter).grid(row=2, column=0, padx=8, pady=6, sticky='w')
+        ttk.Button(self.filter_frame, text="Canny Edge", command=self.canny_edge).grid(row=2, column=1, padx=8, pady=6, sticky='w')
+
+        # Row 3: Prewitt & Sharpen
+        ttk.Button(self.filter_frame, text="Prewitt Edge", command=self.prewitt_filter).grid(row=3, column=0, padx=8, pady=6, sticky='w')
+        ttk.Button(self.filter_frame, text="Sharpen", command=self.sharpen).grid(row=3, column=1, padx=8, pady=6, sticky='w')
+
+        # Row 4: Unsharp & Smooth
+        ttk.Button(self.filter_frame, text="Unsharp Mask", command=self.unsharp_filter).grid(row=4, column=0, padx=8, pady=6, sticky='w')
+        ttk.Button(self.filter_frame, text="Smooth", command=self.smooth).grid(row=4, column=1, padx=8, pady=6, sticky='w')
+
+        # Other filters further down
+        ttk.Button(self.filter_frame, text="Cone Filter", command=self.cone_filter).grid(row=5, column=0, padx=8, pady=6, sticky='w')
+        ttk.Button(self.filter_frame, text="Paramedian Filter", command=self.paramedian_filter).grid(row=5, column=1, padx=8, pady=6, sticky='w')
+        ttk.Button(self.filter_frame, text="Circular Filter", command=self.circular_filter).grid(row=6, column=0, padx=8, pady=6, sticky='w')
 
     def setup_morph_tab(self):
         ttk.Button(self.morph_frame, text="Erosion", command=self.erosion).grid(row=0, column=0, padx=5, pady=5)
@@ -526,6 +576,21 @@ class App:
     def ocr_preprocess(self):
         if self.isImageInstantiated:
             self.img.all_filters = select_filter('ocr_preprocess', True)
+            self.img.update()
+
+    def cone_filter(self):
+        if self.isImageInstantiated:
+            self.img.all_filters = select_filter('cone', True)
+            self.img.update()
+
+    def paramedian_filter(self):
+        if self.isImageInstantiated:
+            self.img.all_filters = select_filter('paramedian', True)
+            self.img.update()
+
+    def circular_filter(self):
+        if self.isImageInstantiated:
+            self.img.all_filters = select_filter('circular', True)
             self.img.update()
 
 App(tk.Tk(), 'Enhanced ToolBox')
