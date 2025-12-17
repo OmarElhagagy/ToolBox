@@ -32,8 +32,8 @@ class ImageCap:
         self.all_filters = {}
         self.ocr_text = ""
         self.ocr_data = None
-        self.sobel_direction = 'all'  # New: for sobel direction
-        self.median_mode = 'median'   # New: for median/min/max
+        self.sobel_direction = 'all'
+        self.median_mode = 'median'
         
         img_path = tkinter.filedialog.askopenfilename()
         if len(img_path) > 0:
@@ -62,18 +62,13 @@ class ImageCap:
         original_pil = PIL.Image.fromarray(original_image)
         filtered_pil = PIL.Image.fromarray(filtered_image)
 
-        # Size displayed images so the entire image is visible (fit within panel), do NOT upscale
         master = self.window if self.window is not None else None
 
-        # Determine actual available panel size. Prefer the label widget's allocated size
-        # (if it exists) so we fit images exactly in the visible area; otherwise fall back
-        # to an estimate based on window size.
         try:
             master.update_idletasks()
         except Exception:
             pass
 
-        # Default estimates
         try:
             win_w = master.winfo_width() or 0
             win_h = master.winfo_height() or 0
@@ -81,7 +76,6 @@ class ImageCap:
             win_w = 0
             win_h = 0
 
-        # If panels already exist use their actual sizes
         if hasattr(self, 'panelA') and self.panelA is not None:
             try:
                 panel_w = max(100, self.panelA.winfo_width())
@@ -91,23 +85,26 @@ class ImageCap:
                 panel_h = max(200, int(win_h * 0.6))
         else:
             if win_w <= 1:
-                panel_w = 400
-                panel_h = 400
+                panel_w = 500
+                panel_h = 500
             else:
                 panel_w = max(200, int(win_w * 0.42))
                 panel_h = max(200, int(win_h * 0.6))
 
-        def fit_within(max_w, max_h, img_w, img_h, img):
-            """Scale image to fit entirely within (max_w,max_h) and do not upscale smaller images."""
+        def fit_within(max_w, max_h, img):
+            """Scale image to fit entirely within (max_w, max_h) without upscaling."""
+            img_w, img_h = img.size
             if img_w == 0 or img_h == 0:
                 return img.resize((max_w, max_h), PIL.Image.LANCZOS)
+            
+            # Calculate scale to fit both width and height, never upscale
             scale = min(max_w / img_w, max_h / img_h, 1.0)
             new_w = max(1, int(img_w * scale))
             new_h = max(1, int(img_h * scale))
             return img.resize((new_w, new_h), PIL.Image.LANCZOS)
 
-        original_pil = fit_within(panel_w, panel_h, *original_pil.size, original_pil)
-        filtered_pil = fit_within(panel_w, panel_h, *filtered_pil.size, filtered_pil)
+        original_pil = fit_within(panel_w, panel_h, original_pil)
+        filtered_pil = fit_within(panel_w, panel_h, filtered_pil)
         original_tk = PIL.ImageTk.PhotoImage(original_pil)
         filtered_tk = PIL.ImageTk.PhotoImage(filtered_pil)
 
@@ -116,13 +113,11 @@ class ImageCap:
         if self.panelA is None or self.panelB is None:
             self.panelA = tkinter.Label(master, image=original_tk)
             self.panelA.image = original_tk
-            # Place image panels in the main window grid; allow them to expand
             self.panelA.grid(row=3, column=2, padx=10, pady=10, sticky='nsew')
             
             self.panelB = tkinter.Label(master, image=filtered_tk)
             self.panelB.image = filtered_tk
             self.panelB.grid(row=3, column=3, padx=10, pady=10, sticky='nsew')
-            # Ensure parent grid allows expansion for these cells
             try:
                 master.grid_columnconfigure(2, weight=1)
                 master.grid_columnconfigure(3, weight=1)
@@ -544,10 +539,11 @@ class ImageCap:
                 gray = cv2.cvtColor(self.current_image, cv2.COLOR_RGB2GRAY)
             else:
                 gray = self.current_image
-            # Cone filter - approximated using weighted average of median and gaussian
             median_filtered = cv2.medianBlur(gray, 5)
             gaussian_filtered = cv2.GaussianBlur(gray, (5, 5), 0)
             cone_filtered = cv2.addWeighted(median_filtered, 0.7, gaussian_filtered, 0.3, 0)
+            # Fixed: ensure result is uint8 before color conversion
+            cone_filtered = cone_filtered.astype(np.uint8)
             self.filtered_image = cv2.cvtColor(cone_filtered, cv2.COLOR_GRAY2RGB)
             self.current_image = self.filtered_image.copy()
 
@@ -568,10 +564,9 @@ class ImageCap:
                 gray = cv2.cvtColor(self.current_image, cv2.COLOR_RGB2GRAY)
             else:
                 gray = self.current_image
-            # Circular median filter using morphological operations
-            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-            # Apply median filter
+            # Fixed: ensure result is uint8 before color conversion
             circular_filtered = cv2.medianBlur(gray, 7)
+            circular_filtered = circular_filtered.astype(np.uint8)
             self.filtered_image = cv2.cvtColor(circular_filtered, cv2.COLOR_GRAY2RGB)
             self.current_image = self.filtered_image.copy()
 
