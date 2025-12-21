@@ -23,7 +23,7 @@ fil = ['color', 'gray', 'threshold', 'adaptive_threshold', 'otsu_threshold', 'in
        'histogramEqualization', 'adaptive_hist_eq', 'sharpen', 'smooth', 'flip_horizontal', 'flip_vertical',
        'rotate', 'resize', 'add_noise', 'bit_plane', 'morph_open', 'morph_close', 'erosion', 'dilation',
        'bgr_to_rgb', 'bgr_to_hsv', 'bgr_to_lab', 'find_contours', 'template_match',
-       'ocr_extract', 'ocr_boxes', 'ocr_preprocess', 'cone', 'paramedian', 'circular']
+       'ocr_extract', 'ocr_boxes', 'ocr_preprocess', 'cone', 'paramedian', 'circular', 'region_growing', 'log_filter', 'compress_analyze']
 
 filter_dic = {}
 
@@ -64,6 +64,10 @@ class App:
         self.color_frame = ttk.Frame(self.notebook)
         self.advanced_frame = ttk.Frame(self.notebook)
         self.ocr_frame = ttk.Frame(self.notebook)
+        self.segmentation_frame = ttk.Frame(self.notebook)
+        self.compression_frame = ttk.Frame(self.notebook)
+
+
         
         self.notebook.add(self.basic_frame, text="Basic")
         self.notebook.add(self.transform_frame, text="Transforms")
@@ -74,6 +78,10 @@ class App:
         self.notebook.add(self.color_frame, text="Color")
         self.notebook.add(self.advanced_frame, text="Advanced")
         self.notebook.add(self.ocr_frame, text="OCR")
+        self.notebook.add(self.segmentation_frame, text="Segmentation")
+        self.notebook.add(self.compression_frame, text="Compression")
+
+
         
         self.setup_basic_tab()
         self.setup_transform_tab()
@@ -84,6 +92,8 @@ class App:
         self.setup_color_tab()
         self.setup_advanced_tab()
         self.setup_ocr_tab()
+        self.setup_segmentation_tab()
+        self.setup_compression_tab()
         
         control_frame = ttk.Frame(window)
         control_frame.grid(row=1, column=0, columnspan=4, pady=10, sticky='ew')
@@ -236,6 +246,7 @@ class App:
         edge_label.grid(row=4, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
         ttk.Button(self.filter_frame, text="Canny Edge", command=self.canny_edge).grid(row=5, column=0, padx=8, pady=4, sticky='ew')
         ttk.Button(self.filter_frame, text="Laplacian Edge", command=self.laplace_filter).grid(row=5, column=1, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.filter_frame, text="LoG Filter", command=self.log_filter_func).grid(row=5, column=4, padx=8, pady=4, sticky='ew')
         ttk.Button(self.filter_frame, text="Prewitt Edge", command=self.prewitt_filter).grid(row=5, column=2, padx=8, pady=4, sticky='ew')
         ttk.Button(self.filter_frame, text="Sharpen", command=self.sharpen).grid(row=5, column=3, padx=8, pady=4, sticky='ew')
         ttk.Button(self.filter_frame, text="Unsharp Mask", command=self.unsharp_filter).grid(row=6, column=0, padx=8, pady=4, sticky='ew')
@@ -336,6 +347,47 @@ class App:
         ttk.Button(self.ocr_frame, text="Extract Text", command=self.ocr_extract).grid(row=1, column=0, padx=8, pady=4, sticky='ew')
         ttk.Button(self.ocr_frame, text="Draw Text Boxes", command=self.ocr_draw_boxes).grid(row=1, column=1, padx=8, pady=4, sticky='ew')
         ttk.Button(self.ocr_frame, text="Show Preprocessed Image", command=self.ocr_preprocess).grid(row=2, column=0, padx=8, pady=4, sticky='ew')
+
+
+    def setup_segmentation_tab(self):
+        for c in range(3):
+            self.segmentation_frame.grid_columnconfigure(c, weight=1, minsize=120)
+        
+        seg_label = ttk.Label(self.segmentation_frame, text="Image Segmentation", font=("Segoe UI", 10, "bold"))
+        seg_label.grid(row=0, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        
+        ttk.Label(self.segmentation_frame, text="Seed Point (x,y):").grid(row=1, column=0, padx=5, pady=5, sticky='e')
+        self.seed_entry = ttk.Entry(self.segmentation_frame, width=10)
+        self.seed_entry.insert(0, "2,2")
+        self.seed_entry.grid(row=1, column=1, padx=5, pady=5, sticky='w')
+        
+        ttk.Label(self.segmentation_frame, text="Threshold:").grid(row=2, column=0, padx=5, pady=5, sticky='e')
+        self.threshold_entry = ttk.Entry(self.segmentation_frame, width=10)
+        self.threshold_entry.insert(0, "50")
+        self.threshold_entry.grid(row=2, column=1, padx=5, pady=5, sticky='w')
+        
+        ttk.Button(self.segmentation_frame, text="Apply Region Growing", command=self.region_growing_func).grid(row=3, column=0, columnspan=2, padx=8, pady=4, sticky='ew')
+
+    def setup_compression_tab(self):
+        for c in range(3):
+            self.compression_frame.grid_columnconfigure(c, weight=1, minsize=120)
+
+        comp_label = ttk.Label(self.compression_frame, text="Image Compression Analysis", font=("Segoe UI", 10, "bold"))
+        comp_label.grid(row=0, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+
+        ttk.Label(self.compression_frame, text="Quality (1-100):").grid(row=1, column=0, padx=5, pady=5, sticky='e')
+        self.quality_entry = ttk.Entry(self.compression_frame, width=10)
+        self.quality_entry.insert(0, "50")
+        self.quality_entry.grid(row=1, column=1, padx=5, pady=5, sticky='w')
+
+        ttk.Button(self.compression_frame, text="Compress & Analyze", command=self.compress_analyze_func).grid(row=2, column=0, columnspan=2, padx=8, pady=4, sticky='ew')
+
+        # Label to show compression metrics
+        self.compression_metrics_label = ttk.Label(self.compression_frame, text="", font=("Segoe UI", 9))
+        self.compression_metrics_label.grid(row=3, column=0, columnspan=2, padx=5, pady=5)
+
+        info_label = ttk.Label(self.compression_frame, text="Shows: Compression Ratio, RMSE, PSNR", font=("Segoe UI", 8, "italic"))
+        info_label.grid(row=4, column=0, columnspan=2, padx=5, pady=5)
 
 
     def on_tab_changed(self, event):
@@ -563,7 +615,13 @@ class App:
             "Template Matching": "Find a small image (template) inside the main image.",
             "Extract Text": "Extract text from the image using OCR.",
             "Draw Text Boxes": "Draw boxes around detected text in the image.",
-            "Show Preprocessed Image": "Show the image after preparing it for OCR."
+            "Show Preprocessed Image": "Show the image after preparing it for OCR.",
+            "LoG Filter": "Detects edges using the Laplacian of Gaussian (LoG) method. Useful for highlighting fine details and boundaries in images, especially when you want to see where objects start and end.",
+            "Apply Region Growing": "Segments the image starting from a chosen point, grouping together similar pixels. Use this to separate objects from the background by clicking on a part of the object you want to extract.",
+            "Compress & Analyze": "Compresses the image and shows how much space is saved and how much quality is lost. Useful for understanding how image compression affects file size and clarity.",
+            "Apply Median Filter Option": "Removes random black and white dots (salt-and-pepper noise) or highlights the darkest/brightest areas, depending on your choice. Helps clean up noisy images.",
+            "Apply Sobel Edge Detection": "Finds edges in the image using the Sobel method. Good for seeing outlines and borders of objects.",
+            "Apply Gamma": "Change image brightness using a custom gamma value. Lower values brighten, higher values darken."
         }
         # Attach tooltips to all ttk.Buttons and ttk.Radiobuttons
         def attach_tooltips_to_frame(frame):
@@ -575,7 +633,11 @@ class App:
                 elif isinstance(child, (ttk_mod.LabelFrame, ttk_mod.Frame)):
                     attach_tooltips_to_frame(child)
         # Main frames
-        for frame in [self.basic_frame, self.transform_frame, self.filter_frame, self.morph_frame, self.histogram_frame, self.threshold_frame, self.color_frame, self.advanced_frame, self.ocr_frame]:
+        for frame in [
+            self.basic_frame, self.transform_frame, self.filter_frame, self.morph_frame, self.histogram_frame,
+            self.threshold_frame, self.color_frame, self.advanced_frame, self.ocr_frame,
+            self.segmentation_frame, self.compression_frame
+        ]:
             attach_tooltips_to_frame(frame)
         # Control frame (top buttons)
         for widget in self.window.winfo_children():
@@ -835,5 +897,55 @@ class App:
         if self.isImageInstantiated:
             self.img.all_filters = select_filter('circular', True)
             self.img.update()
+
+    def region_growing_func(self):
+        if self.isImageInstantiated:
+            try:
+                coords = self.seed_entry.get().split(',')
+                self.img.seed_point = (int(coords[0]), int(coords[1]))
+                self.img.similarity_threshold = int(self.threshold_entry.get())
+                self.img.all_filters = select_filter('region_growing', True)
+                self.img.update()
+            except:
+                print("Invalid parameters")
+
+    def log_filter_func(self):
+        if self.isImageInstantiated:
+            self.img.all_filters = select_filter('log_filter', True)
+            self.img.update()
+
+    def compress_analyze_func(self):
+        if self.isImageInstantiated:
+            try:
+                quality = int(self.quality_entry.get())
+                quality = max(1, min(100, quality))  # Clamp to 1-100
+                self.img.compression_quality = quality
+                self.img.all_filters = select_filter('compress_analyze', True)
+                # Call update and capture metrics from img
+                # Patch: monkey-patch print to capture output
+                import io, sys
+                buf = io.StringIO()
+                old_stdout = sys.stdout
+                sys.stdout = buf
+                self.img.update()
+                sys.stdout = old_stdout
+                output = buf.getvalue()
+                # Parse metrics from output
+                cr, rmse, psnr = None, None, None
+                for line in output.splitlines():
+                    if "Compression Ratio" in line:
+                        cr = line.split(":", 1)[1].strip()
+                    elif "RMSE" in line:
+                        rmse = line.split(":", 1)[1].strip()
+                    elif "PSNR" in line:
+                        psnr = line.split(":", 1)[1].strip()
+                metrics_text = ""
+                if cr and rmse and psnr:
+                    metrics_text = f"Compression Ratio: {cr}\nRMSE: {rmse}\nPSNR: {psnr}"
+                else:
+                    metrics_text = "Compression analysis failed."
+                self.compression_metrics_label.config(text=metrics_text)
+            except Exception as e:
+                self.compression_metrics_label.config(text="Invalid quality value")
 
 App(tk.Tk(), 'Enhanced ToolBox')

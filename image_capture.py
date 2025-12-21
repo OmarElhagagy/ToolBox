@@ -69,6 +69,19 @@ class ImageCap:
             self.original_image = None
 
 
+
+    def calculate_compression_ratio(self, original, compressed):
+        return original.nbytes / compressed.nbytes if compressed.nbytes > 0 else 0
+
+    def calculate_rmse(self, original, reconstructed):
+        return np.sqrt(np.mean((original.astype(float) - reconstructed.astype(float)) ** 2))
+
+    def calculate_psnr(self, original, reconstructed):
+        mse = np.mean((original.astype(float) - reconstructed.astype(float)) ** 2)
+        if mse == 0:
+            return float('inf')
+        return 10 * np.log10((255 ** 2) / mse)
+
     def update_panel(self, original_image, filtered_image):
         # Use the dedicated image_display_frame for image placement
         master = None
@@ -191,6 +204,86 @@ class ImageCap:
         
         return processed
 
+    def region_growing(self, img, seed, threshold):
+        h, w = img.shape
+        segmented = np.zeros_like(img)
+        visited = np.zeros((h, w), dtype=bool)
+        seed_val = img[seed[1], seed[0]]
+        queue = [seed]
+        
+        while queue:
+            x, y = queue.pop(0)
+            if visited[y, x]:
+                continue
+            if abs(int(img[y, x]) - int(seed_val)) <= threshold:
+                segmented[y, x] = 255
+                visited[y, x] = True
+                for dx, dy in [(0,1), (1,0), (0,-1), (-1,0)]:
+                    nx, ny = x+dx, y+dy
+                    if 0 <= nx < w and 0 <= ny < h and not visited[ny, nx]:
+                        queue.append((nx, ny))
+        return segmented
+
+    def calculate_compression_ratio(self, original, compressed):
+        return original.nbytes / compressed.nbytes if compressed.nbytes > 0 else 0
+
+    def calculate_rmse(self, original, reconstructed):
+        return np.sqrt(np.mean((original.astype(float) - reconstructed.astype(float)) ** 2))
+
+    def calculate_psnr(self, original, reconstructed):
+        mse = np.mean((original.astype(float) - reconstructed.astype(float)) ** 2)
+        if mse == 0:
+            return float('inf')
+        return 10 * np.log10((255 ** 2) / mse)
+
+    def compress_image(self, quality=50):
+        """Simple block-based compression using DCT"""
+        if len(self.current_image.shape) == 3:
+            gray = cv2.cvtColor(self.current_image, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = self.current_image
+        
+        h, w = gray.shape
+        # Pad to multiple of 8
+        pad_h = (8 - h % 8) % 8
+        pad_w = (8 - w % 8) % 8
+        padded = np.pad(gray, ((0, pad_h), (0, pad_w)), mode='edge')
+        
+        compressed_blocks = []
+        # Process 8x8 blocks
+        for i in range(0, padded.shape[0], 8):
+            for j in range(0, padded.shape[1], 8):
+                block = padded[i:i+8, j:j+8].astype(np.float32)
+                # DCT transform
+                dct_block = cv2.dct(block)
+                # Quantization (higher quality = less compression)
+                quant_factor = 100 - quality
+                quantized = np.round(dct_block / (1 + quant_factor / 10))
+                compressed_blocks.append(quantized)
+        
+        return compressed_blocks, (h, w), (padded.shape[0], padded.shape[1])
+
+    def decompress_image(self, compressed_blocks, original_shape, padded_shape, quality=50):
+        """Reconstruct image from compressed blocks"""
+        h_pad, w_pad = padded_shape
+        reconstructed = np.zeros((h_pad, w_pad), dtype=np.float32)
+        
+        quant_factor = 100 - quality
+        block_idx = 0
+        for i in range(0, h_pad, 8):
+            for j in range(0, w_pad, 8):
+                # Dequantize
+                dequantized = compressed_blocks[block_idx] * (1 + quant_factor / 10)
+                # Inverse DCT
+                idct_block = cv2.idct(dequantized)
+                reconstructed[i:i+8, j:j+8] = idct_block
+                block_idx += 1
+        
+        # Remove padding
+        h, w = original_shape
+        reconstructed = reconstructed[:h, :w]
+        return np.clip(reconstructed, 0, 255).astype(np.uint8)
+
     def perform_ocr(self, lang='eng', preprocess=True):
         """Extract text from image using Tesseract OCR, supporting multi-language"""
         if not TESSERACT_AVAILABLE:
@@ -305,6 +398,21 @@ class ImageCap:
             laplace = np.absolute(laplace)
             laplace = np.uint8(laplace)
             self.filtered_image = cv2.cvtColor(laplace, cv2.COLOR_GRAY2RGB)
+            self.current_image = self.filtered_image.copy()
+
+        elif get_f('log_filter'):
+            if len(self.current_image.shape) == 3:
+                gray = cv2.cvtColor(self.current_image, cv2.COLOR_RGB2GRAY)
+            else:
+                gray = self.current_image
+            kernel = np.array([[0, 0, -1, 0, 0],
+                            [0, -1, -2, -1, 0],
+                            [-1, -2, 16, -2, -1],
+                            [0, -1, -2, -1, 0],
+                            [0, 0, -1, 0, 0]], dtype=np.float32)
+            log_filtered = cv2.filter2D(gray, cv2.CV_32F, kernel)
+            log_filtered = np.clip(np.absolute(log_filtered), 0, 255).astype(np.uint8)
+            self.filtered_image = cv2.cvtColor(log_filtered, cv2.COLOR_GRAY2RGB)
             self.current_image = self.filtered_image.copy()
 
         elif get_f('canny'):
@@ -554,6 +662,59 @@ class ImageCap:
             circular_filtered = cv2.medianBlur(gray, 7)
             circular_filtered = circular_filtered.astype(np.uint8)
             self.filtered_image = cv2.cvtColor(circular_filtered, cv2.COLOR_GRAY2RGB)
+            self.current_image = self.filtered_image.copy()
+
+        elif get_f('region_growing'):
+            # Convert to grayscale for segmentation
+            if len(self.current_image.shape) == 3:
+                gray = cv2.cvtColor(self.current_image, cv2.COLOR_RGB2GRAY)
+                orig_rgb = self.current_image.copy()
+            else:
+                gray = self.current_image
+                orig_rgb = cv2.cvtColor(self.current_image, cv2.COLOR_GRAY2RGB)
+            seed = getattr(self, 'seed_point', (2, 2))
+            threshold = getattr(self, 'similarity_threshold', 50)
+            segmented = self.region_growing(gray, seed, threshold)
+            # Overlay: highlight segmented region in red on original image
+            overlay = orig_rgb.copy()
+            # Create a red mask where segmented==255
+            red_mask = np.zeros_like(overlay)
+            red_mask[..., 0] = 255  # Red channel
+            # Use alpha blending to overlay red on segmented region
+            alpha = 0.5
+            mask = segmented == 255
+            overlay[mask] = cv2.addWeighted(overlay[mask], 1 - alpha, red_mask[mask], alpha, 0)
+            self.filtered_image = overlay
+            self.current_image = self.filtered_image.copy()
+
+        elif get_f('compress_analyze'):
+            quality = getattr(self, 'compression_quality', 50)
+            # Compress
+            compressed_blocks, orig_shape, padded_shape = self.compress_image(quality)
+            # Decompress
+            reconstructed = self.decompress_image(compressed_blocks, orig_shape, padded_shape, quality)
+            
+            # Calculate metrics
+            if len(self.current_image.shape) == 3:
+                gray_orig = cv2.cvtColor(self.current_image, cv2.COLOR_RGB2GRAY)
+            else:
+                gray_orig = self.current_image
+            
+            # Approximate compression ratio (blocks store fewer values)
+            original_size = gray_orig.nbytes
+            compressed_size = len(compressed_blocks) * 64 * 4  # 64 values per block, 4 bytes per float
+            cr = original_size / compressed_size
+            rmse = self.calculate_rmse(gray_orig, reconstructed)
+            psnr = self.calculate_psnr(gray_orig, reconstructed)
+            
+            print(f"\n=== Compression Analysis ===")
+            print(f"Quality: {quality}%")
+            print(f"Compression Ratio: {cr:.2f}:1")
+            print(f"RMSE: {rmse:.2f}")
+            print(f"PSNR: {psnr:.2f} dB")
+            print(f"===========================\n")
+            
+            self.filtered_image = cv2.cvtColor(reconstructed, cv2.COLOR_GRAY2RGB)
             self.current_image = self.filtered_image.copy()
 
         elif get_f('bit_plane'):
