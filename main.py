@@ -210,8 +210,6 @@ class App:
         ttk.Button(self.morph_frame, text="Dilation", command=self.dilation).grid(row=0, column=1, padx=5, pady=5)
         ttk.Button(self.morph_frame, text="Morphological Open", command=self.morph_open).grid(row=1, column=0, padx=5, pady=5)
         ttk.Button(self.morph_frame, text="Morphological Close", command=self.morph_close).grid(row=1, column=1, padx=5, pady=5)
-        ttk.Button(self.morph_frame, text="Min Filter", command=self.min_filter).grid(row=2, column=0, padx=5, pady=5)
-        ttk.Button(self.morph_frame, text="Max Filter", command=self.max_filter).grid(row=2, column=1, padx=5, pady=5)
 
     def setup_histogram_tab(self):
         ttk.Button(self.histogram_frame, text="Show Histogram", command=self.show_histogram).grid(row=0, column=0, padx=5, pady=5)
