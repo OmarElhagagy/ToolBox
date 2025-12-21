@@ -28,6 +28,7 @@ except Exception as e:
 
 class ImageCap:
     def __init__(self, window=None):
+        self.noise_type = 'both'  # default
         self.window = window
         self.all_filters = {}
         self.ocr_text = ""
@@ -51,60 +52,18 @@ class ImageCap:
             self.original_image = None
 
     def update_panel(self, original_image, filtered_image):
+        # Always display at original size (no fitting)
         if len(original_image.shape) == 2:
             original_image = cv2.cvtColor(original_image, cv2.COLOR_GRAY2RGB)
         if len(filtered_image.shape) == 2:
             filtered_image = cv2.cvtColor(filtered_image, cv2.COLOR_GRAY2RGB)
-            
+
         original_image = np.clip(original_image, 0, 255).astype(np.uint8)
         filtered_image = np.clip(filtered_image, 0, 255).astype(np.uint8)
-        
+
         original_pil = PIL.Image.fromarray(original_image)
         filtered_pil = PIL.Image.fromarray(filtered_image)
 
-        master = self.window if self.window is not None else None
-
-        try:
-            master.update_idletasks()
-        except Exception:
-            pass
-
-        try:
-            win_w = master.winfo_width() or 0
-            win_h = master.winfo_height() or 0
-        except Exception:
-            win_w = 0
-            win_h = 0
-
-        if hasattr(self, 'panelA') and self.panelA is not None:
-            try:
-                panel_w = max(100, self.panelA.winfo_width())
-                panel_h = max(100, self.panelA.winfo_height())
-            except Exception:
-                panel_w = max(200, int(win_w * 0.42))
-                panel_h = max(200, int(win_h * 0.6))
-        else:
-            if win_w <= 1:
-                panel_w = 500
-                panel_h = 500
-            else:
-                panel_w = max(200, int(win_w * 0.42))
-                panel_h = max(200, int(win_h * 0.6))
-
-        def fit_within(max_w, max_h, img):
-            """Scale image to fit entirely within (max_w, max_h) without upscaling."""
-            img_w, img_h = img.size
-            if img_w == 0 or img_h == 0:
-                return img.resize((max_w, max_h), PIL.Image.LANCZOS)
-            
-            # Calculate scale to fit both width and height, never upscale
-            scale = min(max_w / img_w, max_h / img_h, 1.0)
-            new_w = max(1, int(img_w * scale))
-            new_h = max(1, int(img_h * scale))
-            return img.resize((new_w, new_h), PIL.Image.LANCZOS)
-
-        original_pil = fit_within(panel_w, panel_h, original_pil)
-        filtered_pil = fit_within(panel_w, panel_h, filtered_pil)
         original_tk = PIL.ImageTk.PhotoImage(original_pil)
         filtered_tk = PIL.ImageTk.PhotoImage(filtered_pil)
 
@@ -114,7 +73,7 @@ class ImageCap:
             self.panelA = tkinter.Label(master, image=original_tk)
             self.panelA.image = original_tk
             self.panelA.grid(row=3, column=2, padx=10, pady=10, sticky='nsew')
-            
+
             self.panelB = tkinter.Label(master, image=filtered_tk)
             self.panelB.image = filtered_tk
             self.panelB.grid(row=3, column=3, padx=10, pady=10, sticky='nsew')
@@ -401,17 +360,21 @@ class ImageCap:
             gamma = 0.8
             transformed = np.power(normalized, gamma)
             self.filtered_image = np.clip(transformed * 255, 0, 255).astype(np.uint8)
+            print(f"Gamma applied: {gamma_val}, min: {self.filtered_image.min()}, max: {self.filtered_image.max()}")
             self.current_image = self.filtered_image.copy()
 
-        elif get_f('gamma_0_5'):
-            normalized = self.current_image / 255.0
-            transformed = np.power(normalized, 0.5)
-            self.filtered_image = np.clip(transformed * 255, 0, 255).astype(np.uint8)
-            self.current_image = self.filtered_image.copy()
-
-        elif get_f('gamma_1_5'):
-            normalized = self.current_image / 255.0
-            transformed = np.power(normalized, 1.5)
+        elif get_f('gamma_custom'):
+            print(f"Checking gamma_custom: {get_f('gamma_custom')}")
+            print(f"all_filters: {self.all_filters}")
+            gamma_val = getattr(self, 'gamma_value', 0.5)
+            try:
+                gamma_val = float(gamma_val)
+            except Exception:
+                gamma_val = 0.5
+            # Always apply gamma to the original image, not the current filtered one
+            base_img = self.original_image if hasattr(self, 'original_image') and self.original_image is not None else self.current_image
+            normalized = base_img / 255.0
+            transformed = np.power(normalized, gamma_val)
             self.filtered_image = np.clip(transformed * 255, 0, 255).astype(np.uint8)
             self.current_image = self.filtered_image.copy()
 
@@ -519,18 +482,21 @@ class ImageCap:
             self.current_image = self.filtered_image.copy()
 
         elif get_f('add_noise'):
-            # Salt and pepper noise
+            # Salt, pepper, or both noise
             noise_img = self.current_image.copy()
             prob = 0.05  # probability of noise
-            
-            # Salt noise (white)
-            salt = np.random.random(self.current_image.shape[:2]) < prob/2
-            noise_img[salt] = 255
-            
-            # Pepper noise (black)
-            pepper = np.random.random(self.current_image.shape[:2]) < prob/2
-            noise_img[pepper] = 0
-            
+            noise_type = getattr(self, 'noise_type', 'both')
+            if noise_type == 'salt':
+                salt = np.random.random(self.current_image.shape[:2]) < prob
+                noise_img[salt] = 255
+            elif noise_type == 'pepper':
+                pepper = np.random.random(self.current_image.shape[:2]) < prob
+                noise_img[pepper] = 0
+            else:  # both
+                salt = np.random.random(self.current_image.shape[:2]) < prob/2
+                noise_img[salt] = 255
+                pepper = np.random.random(self.current_image.shape[:2]) < prob/2
+                noise_img[pepper] = 0
             self.filtered_image = noise_img
             self.current_image = self.filtered_image.copy()
 

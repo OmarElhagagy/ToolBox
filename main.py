@@ -145,13 +145,27 @@ class App:
         self.resize_entry.insert(0, "400,400")
         ttk.Button(self.basic_frame, text="Apply Resize", command=self.resize_image).grid(row=3, column=2, padx=5, pady=5)
         
-        ttk.Button(self.basic_frame, text="Add Noise", command=self.add_noise).grid(row=4, column=0, padx=5, pady=5)
+        # Noise options (Salt, Pepper, Both)
+        noise_frame = ttk.LabelFrame(self.basic_frame, text="Noise Options")
+        noise_frame.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+        self.noise_var = tk.StringVar(value="both")
+        ttk.Radiobutton(noise_frame, text="Salt & Pepper", variable=self.noise_var, value="both").grid(row=0, column=0, padx=2, pady=2)
+        ttk.Radiobutton(noise_frame, text="Salt Only", variable=self.noise_var, value="salt").grid(row=0, column=1, padx=2, pady=2)
+        ttk.Radiobutton(noise_frame, text="Pepper Only", variable=self.noise_var, value="pepper").grid(row=0, column=2, padx=2, pady=2)
+        noise_btn = ttk.Button(noise_frame, text="Add Noise", command=self.add_noise)
+        noise_btn.grid(row=0, column=3, padx=4, pady=2)
+        # Add tooltips after all widgets are created (after all setup_..._tab calls)
+        self.window.after(100, self._add_tooltips)
 
     def setup_transform_tab(self):
         ttk.Button(self.transform_frame, text="Log Transform", command=self.logTransformation).grid(row=0, column=0, padx=5, pady=5)
         ttk.Button(self.transform_frame, text="Power Transform", command=self.powerLowEnhancement).grid(row=0, column=1, padx=5, pady=5)
-        ttk.Button(self.transform_frame, text="Gamma 0.5", command=self.gamma_0_5).grid(row=1, column=0, padx=5, pady=5)
-        ttk.Button(self.transform_frame, text="Gamma 1.5", command=self.gamma_1_5).grid(row=1, column=1, padx=5, pady=5)
+        ttk.Label(self.transform_frame, text="Gamma:").grid(row=1, column=0, padx=5, pady=5, sticky='e')
+        self.gamma_entry = ttk.Entry(self.transform_frame, width=6)
+        self.gamma_entry.grid(row=1, column=1, padx=5, pady=5, sticky='w')
+        self.gamma_entry.insert(0, "0.5")
+        gamma_btn = ttk.Button(self.transform_frame, text="Apply Gamma", command=self.apply_gamma)
+        gamma_btn.grid(row=1, column=2, padx=5, pady=5)
         ttk.Button(self.transform_frame, text="Negative", command=self.negativeEnhancement).grid(row=2, column=0, padx=5, pady=5)
         ttk.Button(self.transform_frame, text="Contrast Stretch", command=self.contrast_stretch).grid(row=2, column=1, padx=5, pady=5)
         ttk.Button(self.transform_frame, text="Increase Contrast", command=self.increaseContrast_filter).grid(row=3, column=0, padx=5, pady=5)
@@ -175,7 +189,8 @@ class App:
         ttk.Radiobutton(median_frame, text="Median", variable=self.median_var, value="median").grid(row=0, column=0, padx=4, pady=2)
         ttk.Radiobutton(median_frame, text="Min", variable=self.median_var, value="min").grid(row=0, column=1, padx=4, pady=2)
         ttk.Radiobutton(median_frame, text="Max", variable=self.median_var, value="max").grid(row=0, column=2, padx=4, pady=2)
-        ttk.Button(median_frame, text="Apply", command=self.median_filter).grid(row=0, column=3, padx=4, pady=2)
+        median_btn = ttk.Button(median_frame, text="Apply Median Filter Option", command=self.median_filter)
+        median_btn.grid(row=0, column=3, padx=4, pady=2)
 
         # Row 1: Average blur and Sobel options
         ttk.Button(self.filter_frame, text="Average Blur", command=self.average_filter).grid(row=1, column=0, padx=8, pady=6, sticky='w')
@@ -186,8 +201,12 @@ class App:
         ttk.Radiobutton(sobel_frame, text="Vertical", variable=self.sobel_var, value="vertical").grid(row=0, column=1, padx=3, pady=2)
         ttk.Radiobutton(sobel_frame, text="Diagonal", variable=self.sobel_var, value="diagonal").grid(row=0, column=2, padx=3, pady=2)
         ttk.Radiobutton(sobel_frame, text="All", variable=self.sobel_var, value="all").grid(row=0, column=3, padx=3, pady=2)
-        ttk.Button(sobel_frame, text="Apply", command=self.sobel_filter).grid(row=0, column=4, padx=4, pady=2)
+        sobel_btn = ttk.Button(sobel_frame, text="Apply Sobel Edge Detection", command=self.sobel_filter)
+        sobel_btn.grid(row=0, column=4, padx=4, pady=2)
 
+        # Add tooltips for new buttons after creation
+        self._add_tooltip(median_btn, "Apply Median Filter Option", "Remove salt-and-pepper noise or highlight min/max values. Use when image has random black/white dots or to smooth while preserving edges.")
+        self._add_tooltip(sobel_btn, "Apply Sobel Edge Detection", "Detect edges in the image using the Sobel method. Use to highlight boundaries and transitions in brightness.")
         # Row 2: Laplacian & Canny
         ttk.Button(self.filter_frame, text="Laplacian Edge", command=self.laplace_filter).grid(row=2, column=0, padx=8, pady=6, sticky='w')
         ttk.Button(self.filter_frame, text="Canny Edge", command=self.canny_edge).grid(row=2, column=1, padx=8, pady=6, sticky='w')
@@ -337,8 +356,150 @@ class App:
 
     def add_noise(self):
         if self.isImageInstantiated:
+            # Pass noise type to image handler
+            self.img.noise_type = getattr(self, 'noise_var', None).get() if hasattr(self, 'noise_var') else 'both'
             self.img.all_filters = select_filter('add_noise', True)
             self.img.update()
+
+    def _add_tooltip(self, widget, name, text):
+        # Helper to add a tooltip to a single widget
+        import tkinter.ttk as ttk_mod
+        try:
+            from tkinter import Tooltip
+        except ImportError:
+            # Fallback: simple tooltip class
+            class Tooltip:
+                def __init__(self, widget, text):
+                    self.widget = widget
+                    self.text = text
+                    self.tipwindow = None
+                    widget.bind("<Enter>", self.show)
+                    widget.bind("<Leave>", self.hide)
+                def show(self, event=None):
+                    if self.tipwindow or not self.text:
+                        return
+                    x, y, _, cy = self.widget.bbox("insert") if hasattr(self.widget, 'bbox') else (0,0,0,0)
+                    x = x + self.widget.winfo_rootx() + 25
+                    y = y + cy + self.widget.winfo_rooty() + 20
+                    self.tipwindow = tw = tk.Toplevel(self.widget)
+                    tw.wm_overrideredirect(1)
+                    tw.wm_geometry(f"+{x}+{y}")
+                    label = tk.Label(tw, text=self.text, justify=tk.LEFT,
+                                    background="#ffffe0", relief=tk.SOLID, borderwidth=1,
+                                    font=("tahoma", "8", "normal"))
+                    label.pack(ipadx=1)
+                def hide(self, event=None):
+                    tw = self.tipwindow
+                    self.tipwindow = None
+                    if tw:
+                        tw.destroy()
+        Tooltip(widget, text)
+
+    def _add_tooltips(self):
+        # Helper to add tooltips to all buttons (very brief, beginner-friendly)
+        import tkinter.ttk as ttk_mod
+        try:
+            from tkinter import Tooltip
+        except ImportError:
+            # Fallback: simple tooltip class
+            class Tooltip:
+                def __init__(self, widget, text):
+                    self.widget = widget
+                    self.text = text
+                    self.tipwindow = None
+                    widget.bind("<Enter>", self.show)
+                    widget.bind("<Leave>", self.hide)
+                def show(self, event=None):
+                    if self.tipwindow or not self.text:
+                        return
+                    x, y, _, cy = self.widget.bbox("insert") if hasattr(self.widget, 'bbox') else (0,0,0,0)
+                    x = x + self.widget.winfo_rootx() + 25
+                    y = y + cy + self.widget.winfo_rooty() + 20
+                    self.tipwindow = tw = tk.Toplevel(self.widget)
+                    tw.wm_overrideredirect(1)
+                    tw.wm_geometry(f"+{x}+{y}")
+                    label = tk.Label(tw, text=self.text, justify=tk.LEFT,
+                                    background="#ffffe0", relief=tk.SOLID, borderwidth=1,
+                                    font=("tahoma", "8", "normal"))
+                    label.pack(ipadx=1)
+                def hide(self, event=None):
+                    tw = self.tipwindow
+                    self.tipwindow = None
+                    if tw:
+                        tw.destroy()
+        # Map: button text -> tooltip
+        tooltips = {
+            "Choose Image": "Open an image file to process.",
+            "Open Camera": "Start the webcam to capture images.",
+            "Save Image": "Save the current processed image.",
+            "Reset to Original": "Restore the image to its original state.",
+            "Back": "Undo the last operation.",
+            "Close": "Close the application.",
+            "Color/No Filter": "Show the original image without any filter.",
+            "Grayscale": "Convert the image to black and white (grayscale).",
+            "Apply Rotation": "Rotate the image by the specified angle.",
+            "Flip Horizontal": "Flip the image left-to-right.",
+            "Flip Vertical": "Flip the image upside down.",
+            "Apply Resize": "Resize the image to the given width and height.",
+            "Add Noise": "Add random white (salt), black (pepper), or both types of noise to the image. Used to simulate real-world image corruption.",
+            "Log Transform": "Brighten dark areas using a logarithmic transformation.",
+            "Power Transform": "Adjust image brightness using a power-law curve.",
+            "Apply Gamma": "Change image brightness using a custom gamma value. Lower values brighten, higher values darken.",
+            "Negative": "Invert all colors in the image.",
+            "Contrast Stretch": "Increase the difference between dark and light areas.",
+            "Increase Contrast": "Make the image more vivid by increasing contrast.",
+            "Decrease Contrast": "Make the image more muted by decreasing contrast.",
+            "Bit Plane Slicing": "Show the image using only certain bits, highlighting details.",
+            "Gaussian Blur": "Blur the image to reduce noise and detail.",
+            "Median": "Remove salt-and-pepper noise while preserving edges.",
+            "Min": "Highlight the darkest areas (min filter).",
+            "Max": "Highlight the brightest areas (max filter).",
+            "Apply": "Apply the selected filter or operation.",
+            "Average Blur": "Blur the image by averaging neighboring pixels.",
+            "Laplacian Edge": "Detect edges using the Laplacian method.",
+            "Canny Edge": "Detect edges using the Canny method.",
+            "Prewitt Edge": "Detect edges using the Prewitt method.",
+            "Sharpen": "Make the image details clearer.",
+            "Unsharp Mask": "Sharpen the image by enhancing edges.",
+            "Smooth": "Reduce image noise and detail.",
+            "Cone Filter": "Apply a custom cone-shaped filter.",
+            "Paramedian Filter": "Apply a paramedian filter for noise reduction.",
+            "Circular Filter": "Apply a circular filter for smoothing.",
+            "Erosion": "Remove small white spots (noise) from the image.",
+            "Dilation": "Expand white areas in the image.",
+            "Morphological Open": "Remove small objects from the foreground.",
+            "Morphological Close": "Fill small holes in the foreground.",
+            "Show Histogram": "Show the distribution of pixel values.",
+            "Histogram Equalization": "Improve contrast using histogram equalization.",
+            "Adaptive Hist. Eq.": "Enhance contrast adaptively.",
+            "Simple Threshold": "Convert image to black and white using a fixed value.",
+            "Adaptive Threshold": "Convert image to black and white using local values.",
+            "Otsu's Threshold": "Automatically find the best threshold for black and white.",
+            "BGR to RGB": "Convert image color from BGR to RGB.",
+            "BGR to HSV": "Convert image color from BGR to HSV.",
+            "BGR to LAB": "Convert image color from BGR to LAB.",
+            "Find Contours": "Detect and outline shapes in the image.",
+            "Template Matching": "Find a small image (template) inside the main image.",
+            "Extract Text": "Extract text from the image using OCR.",
+            "Draw Text Boxes": "Draw boxes around detected text in the image.",
+            "Show Preprocessed Image": "Show the image after preparing it for OCR."
+        }
+        # Attach tooltips to all ttk.Buttons and ttk.Radiobuttons
+        def attach_tooltips_to_frame(frame):
+            for child in frame.winfo_children():
+                if isinstance(child, (ttk_mod.Button, ttk_mod.Radiobutton)):
+                    txt = child.cget("text")
+                    if txt in tooltips:
+                        Tooltip(child, tooltips[txt])
+                elif isinstance(child, (ttk_mod.LabelFrame, ttk_mod.Frame)):
+                    attach_tooltips_to_frame(child)
+        # Main frames
+        for frame in [self.basic_frame, self.transform_frame, self.filter_frame, self.morph_frame, self.histogram_frame, self.threshold_frame, self.color_frame, self.advanced_frame, self.ocr_frame]:
+            attach_tooltips_to_frame(frame)
+        # Control frame (top buttons)
+        for widget in self.window.winfo_children():
+            if isinstance(widget, ttk_mod.Frame):
+                attach_tooltips_to_frame(widget)
 
     def logTransformation(self):
         if self.isImageInstantiated:
@@ -347,15 +508,25 @@ class App:
         elif self.isVideoInstantiated:
             self.vid.all_filters = select_filter('logTransformation', True)
 
-    def gamma_0_5(self):
-        if self.isImageInstantiated:
-            self.img.all_filters = select_filter('gamma_0_5', True)
-            self.img.update()
 
-    def gamma_1_5(self):
+    def apply_gamma(self):
         if self.isImageInstantiated:
-            self.img.all_filters = select_filter('gamma_1_5', True)
+            try:
+                gamma_val = float(self.gamma_entry.get())
+            except Exception:
+                print("Invalid gamma value")
+                return
+            # Set gamma_value attribute on ImageCap for use in gamma_custom
+            setattr(self.img, 'gamma_value', gamma_val)
+            # Set gamma_custom True without replacing all_filters if possible
+            if hasattr(self.img.all_filters, '__setitem__'):
+                self.img.all_filters['gamma_custom'] = True
+            else:
+                self.img.all_filters = select_filter('gamma_custom', True)
+            print(f"all_filters after gamma: {self.img.all_filters}")
             self.img.update()
+            # Show the filtered image, not the original
+            self.img.update_panel(self.img.filtered_image, self.img.filtered_image)
 
     def powerLowEnhancement(self):
         if self.isImageInstantiated:
