@@ -51,8 +51,33 @@ class ImageCap:
         else:
             self.original_image = None
 
+
     def update_panel(self, original_image, filtered_image):
-        # Always display at original size (no fitting)
+        # Dynamically determine available size for image display
+        master = self.window if self.window is not None else None
+
+        # Determine available width and height for image display
+        avail_width, avail_height = 600, 600
+        if master is not None:
+            try:
+                master.update_idletasks()
+                width = master.winfo_width()
+                height = master.winfo_height()
+                # Deduct some space for controls (e.g., 250px height, 400px width)
+                avail_width = max(width - 420, 200)
+                avail_height = max(height - 300, 200)
+            except Exception:
+                pass
+
+        def resize_for_display(img, max_w=avail_width, max_h=avail_height):
+            h, w = img.shape[:2]
+            scale = min(max_w / w, max_h / h, 1.0)  # Don't upscale
+            new_w, new_h = int(w * scale), int(h * scale)
+            return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+        original_image = resize_for_display(original_image)
+        filtered_image = resize_for_display(filtered_image)
+
         if len(original_image.shape) == 2:
             original_image = cv2.cvtColor(original_image, cv2.COLOR_GRAY2RGB)
         if len(filtered_image.shape) == 2:
@@ -364,19 +389,17 @@ class ImageCap:
             self.current_image = self.filtered_image.copy()
 
         elif get_f('gamma_custom'):
-            print(f"Checking gamma_custom: {get_f('gamma_custom')}")
-            print(f"all_filters: {self.all_filters}")
             gamma_val = getattr(self, 'gamma_value', 0.5)
             try:
                 gamma_val = float(gamma_val)
             except Exception:
                 gamma_val = 0.5
-            # Always apply gamma to the original image, not the current filtered one
-            base_img = self.original_image if hasattr(self, 'original_image') and self.original_image is not None else self.current_image
-            normalized = base_img / 255.0
+            # Apply gamma to the current filtered image only
+            normalized = self.filtered_image / 255.0
             transformed = np.power(normalized, gamma_val)
             self.filtered_image = np.clip(transformed * 255, 0, 255).astype(np.uint8)
-            self.current_image = self.filtered_image.copy()
+            print(f"Gamma applied: {gamma_val}, min: {self.filtered_image.min()}, max: {self.filtered_image.max()}")
+            # Do NOT update self.current_image here; only filtered_image is changed
 
         elif get_f('contrast_stretch'):
             if len(self.current_image.shape) == 3:

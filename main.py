@@ -3,8 +3,11 @@ from tkinter import ttk
 import tkinter.filedialog
 import time
 import os
+import pytesseract
 # from video_capture import VideoCap # Uncomment if you have this file
 from image_capture import ImageCap
+
+
 
 # Create folder directory to save images
 folder = r"\images"
@@ -40,25 +43,18 @@ class App:
         self.window.title(window_title)
         self.window.geometry("1200x800")
         
-        # Create notebook for tabs
         self.notebook = ttk.Notebook(window)
-        # Let the notebook span the full width so internal rows/cols can expand
         self.notebook.grid(row=0, column=0, columnspan=4, sticky="nsew", padx=10, pady=10)
 
-        # Configure main window grid so lower widgets (images, OCR panel) can expand when maximized
-        # Rows: 0 = notebook, 1 = controls, 3 = image / OCR area
         self.window.grid_rowconfigure(0, weight=1)
         self.window.grid_rowconfigure(1, weight=0)
         self.window.grid_rowconfigure(2, weight=0)
         self.window.grid_rowconfigure(3, weight=1)
 
-        # Columns: allow left OCR panel and right image columns to expand
         for c in (0, 2, 3):
             self.window.grid_columnconfigure(c, weight=1)
-        # keep column 1 reserved for spacing / controls
         self.window.grid_columnconfigure(1, weight=0)
         
-        # Create frames for different categories
         self.basic_frame = ttk.Frame(self.notebook)
         self.transform_frame = ttk.Frame(self.notebook)
         self.filter_frame = ttk.Frame(self.notebook)
@@ -67,7 +63,7 @@ class App:
         self.threshold_frame = ttk.Frame(self.notebook)
         self.color_frame = ttk.Frame(self.notebook)
         self.advanced_frame = ttk.Frame(self.notebook)
-        self.ocr_frame = ttk.Frame(self.notebook) # <--- New OCR Frame
+        self.ocr_frame = ttk.Frame(self.notebook)
         
         self.notebook.add(self.basic_frame, text="Basic")
         self.notebook.add(self.transform_frame, text="Transforms")
@@ -77,7 +73,7 @@ class App:
         self.notebook.add(self.threshold_frame, text="Threshold")
         self.notebook.add(self.color_frame, text="Color")
         self.notebook.add(self.advanced_frame, text="Advanced")
-        self.notebook.add(self.ocr_frame, text="OCR") # <--- Add OCR Tab
+        self.notebook.add(self.ocr_frame, text="OCR")
         
         self.setup_basic_tab()
         self.setup_transform_tab()
@@ -87,11 +83,9 @@ class App:
         self.setup_threshold_tab()
         self.setup_color_tab()
         self.setup_advanced_tab()
-        self.setup_ocr_tab() # <--- Setup OCR controls
+        self.setup_ocr_tab()
         
-        # Main control buttons
         control_frame = ttk.Frame(window)
-        # Put controls across the top; span columns so layout doesn't push other widgets
         control_frame.grid(row=1, column=0, columnspan=4, pady=10, sticky='ew')
         
         ttk.Button(control_frame, text="Choose Image", command=self.select_image).pack(side=tk.LEFT, padx=5)
@@ -516,17 +510,13 @@ class App:
             except Exception:
                 print("Invalid gamma value")
                 return
-            # Set gamma_value attribute on ImageCap for use in gamma_custom
-            setattr(self.img, 'gamma_value', gamma_val)
-            # Set gamma_custom True without replacing all_filters if possible
-            if hasattr(self.img.all_filters, '__setitem__'):
-                self.img.all_filters['gamma_custom'] = True
-            else:
-                self.img.all_filters = select_filter('gamma_custom', True)
-            print(f"all_filters after gamma: {self.img.all_filters}")
+            self.img.gamma_value = gamma_val
+            # Reset all filters to False, then set gamma_custom True
+            self.img.all_filters = {k: False for k in self.img.all_filters.keys()}
+            self.img.all_filters['gamma_custom'] = True
             self.img.update()
-            # Show the filtered image, not the original
-            self.img.update_panel(self.img.filtered_image, self.img.filtered_image)
+            # Show the original and filtered images correctly
+            self.img.update_panel(self.img.original_image, self.img.filtered_image)
 
     def powerLowEnhancement(self):
         if self.isImageInstantiated:
