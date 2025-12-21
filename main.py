@@ -95,6 +95,11 @@ class App:
         ttk.Button(control_frame, text="Back", command=self.back).pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="Close", command=window.destroy).pack(side=tk.LEFT, padx=5)
         
+        # Dedicated frame for image display (row=3, col=0-3)
+        self.image_display_frame = ttk.Frame(window)
+        self.image_display_frame.grid(row=3, column=0, columnspan=4, sticky="nsew", padx=10, pady=10)
+        self.window.image_display_frame = self.image_display_frame  # For ImageCap to access
+
         # OCR Text Display - Initially hidden
         ocr_display_frame = ttk.LabelFrame(window, text="Extracted Text & Language")
         self.ocr_display_frame = ocr_display_frame  # Save reference
@@ -119,136 +124,218 @@ class App:
         self.window.mainloop()
 
     def setup_basic_tab(self):
-        ttk.Button(self.basic_frame, text="Color/No Filter", command=self.no_filter).grid(row=0, column=0, padx=5, pady=5)
-        ttk.Button(self.basic_frame, text="Grayscale", command=self.gray_filter).grid(row=0, column=1, padx=5, pady=5)
-        
-        # Rotation controls
-        ttk.Label(self.basic_frame, text="Rotate (degrees):").grid(row=1, column=0, padx=5, pady=5)
+        # Professional, clean layout for Basic tab
+        for c in range(4):
+            self.basic_frame.grid_columnconfigure(c, weight=1, minsize=120)
+        for r in range(6):
+            self.basic_frame.grid_rowconfigure(r, minsize=36)
+
+        # --- Basic Filters Section ---
+        basic_label = ttk.Label(self.basic_frame, text="Basic Filters", font=("Segoe UI", 10, "bold"))
+        basic_label.grid(row=0, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        ttk.Button(self.basic_frame, text="Color/No Filter", command=self.no_filter).grid(row=1, column=0, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.basic_frame, text="Grayscale", command=self.gray_filter).grid(row=1, column=1, padx=8, pady=4, sticky='ew')
+
+        # --- Rotation Section ---
+        rotate_label = ttk.Label(self.basic_frame, text="Rotation", font=("Segoe UI", 10, "bold"))
+        rotate_label.grid(row=2, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        ttk.Label(self.basic_frame, text="Rotate (degrees):").grid(row=3, column=0, padx=5, pady=5, sticky='e')
         self.rotate_entry = ttk.Entry(self.basic_frame, width=10)
-        self.rotate_entry.grid(row=1, column=1, padx=5, pady=5)
+        self.rotate_entry.grid(row=3, column=1, padx=5, pady=5, sticky='w')
         self.rotate_entry.insert(0, "90")
-        ttk.Button(self.basic_frame, text="Apply Rotation", command=self.rotate_image).grid(row=1, column=2, padx=5, pady=5)
-        
-        ttk.Button(self.basic_frame, text="Flip Horizontal", command=self.flip_horizontal).grid(row=2, column=0, padx=5, pady=5)
-        ttk.Button(self.basic_frame, text="Flip Vertical", command=self.flip_vertical).grid(row=2, column=1, padx=5, pady=5)
-        
-        # Resize controls
-        ttk.Label(self.basic_frame, text="Resize (width,height):").grid(row=3, column=0, padx=5, pady=5)
+        ttk.Button(self.basic_frame, text="Apply Rotation", command=self.rotate_image).grid(row=3, column=2, padx=5, pady=5, sticky='ew')
+
+        # --- Flip Section ---
+        flip_label = ttk.Label(self.basic_frame, text="Flip", font=("Segoe UI", 10, "bold"))
+        flip_label.grid(row=4, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        ttk.Button(self.basic_frame, text="Flip Horizontal", command=self.flip_horizontal).grid(row=5, column=0, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.basic_frame, text="Flip Vertical", command=self.flip_vertical).grid(row=5, column=1, padx=8, pady=4, sticky='ew')
+
+        # --- Resize Section ---
+        resize_label = ttk.Label(self.basic_frame, text="Resize", font=("Segoe UI", 10, "bold"))
+        resize_label.grid(row=6, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        ttk.Label(self.basic_frame, text="Resize (width,height):").grid(row=7, column=0, padx=5, pady=5, sticky='e')
         self.resize_entry = ttk.Entry(self.basic_frame, width=15)
-        self.resize_entry.grid(row=3, column=1, padx=5, pady=5)
+        self.resize_entry.grid(row=7, column=1, padx=5, pady=5, sticky='w')
         self.resize_entry.insert(0, "400,400")
-        ttk.Button(self.basic_frame, text="Apply Resize", command=self.resize_image).grid(row=3, column=2, padx=5, pady=5)
-        
-        # Noise options (Salt, Pepper, Both)
-        noise_frame = ttk.LabelFrame(self.basic_frame, text="Noise Options")
-        noise_frame.grid(row=4, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+        ttk.Button(self.basic_frame, text="Apply Resize", command=self.resize_image).grid(row=7, column=2, padx=5, pady=5, sticky='ew')
+
+        # --- Noise Section ---
+        noise_label = ttk.Label(self.basic_frame, text="Noise Options", font=("Segoe UI", 10, "bold"))
+        noise_label.grid(row=8, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        noise_frame = ttk.Frame(self.basic_frame)
+        noise_frame.grid(row=9, column=0, columnspan=3, sticky="ew", padx=8, pady=2)
         self.noise_var = tk.StringVar(value="both")
-        ttk.Radiobutton(noise_frame, text="Salt & Pepper", variable=self.noise_var, value="both").grid(row=0, column=0, padx=2, pady=2)
-        ttk.Radiobutton(noise_frame, text="Salt Only", variable=self.noise_var, value="salt").grid(row=0, column=1, padx=2, pady=2)
-        ttk.Radiobutton(noise_frame, text="Pepper Only", variable=self.noise_var, value="pepper").grid(row=0, column=2, padx=2, pady=2)
+        ttk.Radiobutton(noise_frame, text="Salt & Pepper", variable=self.noise_var, value="both").pack(side=tk.LEFT, padx=2)
+        ttk.Radiobutton(noise_frame, text="Salt Only", variable=self.noise_var, value="salt").pack(side=tk.LEFT, padx=2)
+        ttk.Radiobutton(noise_frame, text="Pepper Only", variable=self.noise_var, value="pepper").pack(side=tk.LEFT, padx=2)
         noise_btn = ttk.Button(noise_frame, text="Add Noise", command=self.add_noise)
-        noise_btn.grid(row=0, column=3, padx=4, pady=2)
+        noise_btn.pack(side=tk.LEFT, padx=6)
         # Add tooltips after all widgets are created (after all setup_..._tab calls)
         self.window.after(100, self._add_tooltips)
 
     def setup_transform_tab(self):
-        ttk.Button(self.transform_frame, text="Log Transform", command=self.logTransformation).grid(row=0, column=0, padx=5, pady=5)
-        ttk.Button(self.transform_frame, text="Power Transform", command=self.powerLowEnhancement).grid(row=0, column=1, padx=5, pady=5)
-        ttk.Label(self.transform_frame, text="Gamma:").grid(row=1, column=0, padx=5, pady=5, sticky='e')
+        for c in range(3):
+            self.transform_frame.grid_columnconfigure(c, weight=1, minsize=120)
+        for r in range(6):
+            self.transform_frame.grid_rowconfigure(r, minsize=36)
+
+        # --- Intensity Transformations ---
+        intensity_label = ttk.Label(self.transform_frame, text="Intensity Transformations", font=("Segoe UI", 10, "bold"))
+        intensity_label.grid(row=0, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        ttk.Button(self.transform_frame, text="Log Transform", command=self.logTransformation).grid(row=1, column=0, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.transform_frame, text="Power Transform", command=self.powerLowEnhancement).grid(row=1, column=1, padx=8, pady=4, sticky='ew')
+
+        # --- Gamma Section ---
+        gamma_label = ttk.Label(self.transform_frame, text="Gamma Correction", font=("Segoe UI", 10, "bold"))
+        gamma_label.grid(row=2, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        ttk.Label(self.transform_frame, text="Gamma:").grid(row=3, column=0, padx=5, pady=5, sticky='e')
         self.gamma_entry = ttk.Entry(self.transform_frame, width=6)
-        self.gamma_entry.grid(row=1, column=1, padx=5, pady=5, sticky='w')
+        self.gamma_entry.grid(row=3, column=1, padx=5, pady=5, sticky='w')
         self.gamma_entry.insert(0, "0.5")
         gamma_btn = ttk.Button(self.transform_frame, text="Apply Gamma", command=self.apply_gamma)
-        gamma_btn.grid(row=1, column=2, padx=5, pady=5)
-        ttk.Button(self.transform_frame, text="Negative", command=self.negativeEnhancement).grid(row=2, column=0, padx=5, pady=5)
-        ttk.Button(self.transform_frame, text="Contrast Stretch", command=self.contrast_stretch).grid(row=2, column=1, padx=5, pady=5)
-        ttk.Button(self.transform_frame, text="Increase Contrast", command=self.increaseContrast_filter).grid(row=3, column=0, padx=5, pady=5)
-        ttk.Button(self.transform_frame, text="Decrease Contrast", command=self.decreaseContrast_filter).grid(row=3, column=1, padx=5, pady=5)
-        ttk.Button(self.transform_frame, text="Bit Plane Slicing", command=self.bit_plane_slicing).grid(row=4, column=0, padx=5, pady=5)
+        gamma_btn.grid(row=3, column=2, padx=5, pady=5, sticky='ew')
+
+        # --- Other Transforms ---
+        other_label = ttk.Label(self.transform_frame, text="Other Transforms", font=("Segoe UI", 10, "bold"))
+        other_label.grid(row=4, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        ttk.Button(self.transform_frame, text="Negative", command=self.negativeEnhancement).grid(row=5, column=0, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.transform_frame, text="Contrast Stretch", command=self.contrast_stretch).grid(row=5, column=1, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.transform_frame, text="Increase Contrast", command=self.increaseContrast_filter).grid(row=6, column=0, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.transform_frame, text="Decrease Contrast", command=self.decreaseContrast_filter).grid(row=6, column=1, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.transform_frame, text="Bit Plane Slicing", command=self.bit_plane_slicing).grid(row=7, column=0, padx=8, pady=4, sticky='ew')
 
     def setup_filter_tab(self):
-        # Stabilize the grid for the filter frame to avoid overlapping controls
-        for c in range(2):
-            self.filter_frame.grid_columnconfigure(c, weight=1, minsize=140)
-        for r in range(8):
-            self.filter_frame.grid_rowconfigure(r, minsize=48)
+        # Professional, clean layout for Filters tab
+        for c in range(4):
+            self.filter_frame.grid_columnconfigure(c, weight=1, minsize=120)
+        for r in range(7):
+            self.filter_frame.grid_rowconfigure(r, minsize=36)
 
-        # Row 0: Gaussian + Median options
-        ttk.Button(self.filter_frame, text="Gaussian Blur", command=self.gauss_filter).grid(row=0, column=0, padx=8, pady=6, sticky='w')
+        # --- Blur & Smoothing Section ---
+        blur_label = ttk.Label(self.filter_frame, text="Blur & Smoothing", font=("Segoe UI", 10, "bold"))
+        blur_label.grid(row=0, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        ttk.Button(self.filter_frame, text="Gaussian Blur", command=self.gauss_filter).grid(row=1, column=0, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.filter_frame, text="Average Blur", command=self.average_filter).grid(row=1, column=1, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.filter_frame, text="Smooth", command=self.smooth).grid(row=1, column=2, padx=8, pady=4, sticky='ew')
 
-        # Median filter with options (placed to the right of Gaussian)
-        median_frame = ttk.LabelFrame(self.filter_frame, text="Median Filter Options")
-        median_frame.grid(row=0, column=1, padx=8, pady=6, sticky="nsew")
+        # --- Median/Min/Max Section ---
+        median_label = ttk.Label(self.filter_frame, text="Median/Min/Max", font=("Segoe UI", 10, "bold"))
+        median_label.grid(row=2, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        median_frame = ttk.Frame(self.filter_frame)
+        median_frame.grid(row=3, column=0, columnspan=2, sticky="ew", padx=8, pady=2)
         self.median_var = tk.StringVar(value="median")
-        ttk.Radiobutton(median_frame, text="Median", variable=self.median_var, value="median").grid(row=0, column=0, padx=4, pady=2)
-        ttk.Radiobutton(median_frame, text="Min", variable=self.median_var, value="min").grid(row=0, column=1, padx=4, pady=2)
-        ttk.Radiobutton(median_frame, text="Max", variable=self.median_var, value="max").grid(row=0, column=2, padx=4, pady=2)
+        ttk.Radiobutton(median_frame, text="Median", variable=self.median_var, value="median").pack(side=tk.LEFT, padx=2)
+        ttk.Radiobutton(median_frame, text="Min", variable=self.median_var, value="min").pack(side=tk.LEFT, padx=2)
+        ttk.Radiobutton(median_frame, text="Max", variable=self.median_var, value="max").pack(side=tk.LEFT, padx=2)
         median_btn = ttk.Button(median_frame, text="Apply Median Filter Option", command=self.median_filter)
-        median_btn.grid(row=0, column=3, padx=4, pady=2)
+        median_btn.pack(side=tk.LEFT, padx=6)
 
-        # Row 1: Average blur and Sobel options
-        ttk.Button(self.filter_frame, text="Average Blur", command=self.average_filter).grid(row=1, column=0, padx=8, pady=6, sticky='w')
-        sobel_frame = ttk.LabelFrame(self.filter_frame, text="Sobel Edge Detection")
-        sobel_frame.grid(row=1, column=1, padx=8, pady=6, sticky="nsew")
+        # --- Edge Detection Section ---
+        edge_label = ttk.Label(self.filter_frame, text="Edge Detection", font=("Segoe UI", 10, "bold"))
+        edge_label.grid(row=4, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        ttk.Button(self.filter_frame, text="Canny Edge", command=self.canny_edge).grid(row=5, column=0, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.filter_frame, text="Laplacian Edge", command=self.laplace_filter).grid(row=5, column=1, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.filter_frame, text="Prewitt Edge", command=self.prewitt_filter).grid(row=5, column=2, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.filter_frame, text="Sharpen", command=self.sharpen).grid(row=5, column=3, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.filter_frame, text="Unsharp Mask", command=self.unsharp_filter).grid(row=6, column=0, padx=8, pady=4, sticky='ew')
+
+        # --- Sobel Section ---
+        sobel_label = ttk.Label(self.filter_frame, text="Sobel Edge Detection", font=("Segoe UI", 10, "bold"))
+        sobel_label.grid(row=2, column=2, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        sobel_frame = ttk.Frame(self.filter_frame)
+        sobel_frame.grid(row=3, column=2, columnspan=2, sticky="ew", padx=8, pady=2)
         self.sobel_var = tk.StringVar(value="all")
-        ttk.Radiobutton(sobel_frame, text="Horizontal", variable=self.sobel_var, value="horizontal").grid(row=0, column=0, padx=3, pady=2)
-        ttk.Radiobutton(sobel_frame, text="Vertical", variable=self.sobel_var, value="vertical").grid(row=0, column=1, padx=3, pady=2)
-        ttk.Radiobutton(sobel_frame, text="Diagonal", variable=self.sobel_var, value="diagonal").grid(row=0, column=2, padx=3, pady=2)
-        ttk.Radiobutton(sobel_frame, text="All", variable=self.sobel_var, value="all").grid(row=0, column=3, padx=3, pady=2)
+        ttk.Radiobutton(sobel_frame, text="Horizontal", variable=self.sobel_var, value="horizontal").pack(side=tk.LEFT, padx=2)
+        ttk.Radiobutton(sobel_frame, text="Vertical", variable=self.sobel_var, value="vertical").pack(side=tk.LEFT, padx=2)
+        ttk.Radiobutton(sobel_frame, text="Diagonal", variable=self.sobel_var, value="diagonal").pack(side=tk.LEFT, padx=2)
+        ttk.Radiobutton(sobel_frame, text="All", variable=self.sobel_var, value="all").pack(side=tk.LEFT, padx=2)
         sobel_btn = ttk.Button(sobel_frame, text="Apply Sobel Edge Detection", command=self.sobel_filter)
-        sobel_btn.grid(row=0, column=4, padx=4, pady=2)
+        sobel_btn.pack(side=tk.LEFT, padx=6)
+
+        # --- Specialty Filters Section ---
+        specialty_label = ttk.Label(self.filter_frame, text="Specialty Filters", font=("Segoe UI", 10, "bold"))
+        specialty_label.grid(row=7, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        ttk.Button(self.filter_frame, text="Paramedian Filter", command=self.paramedian_filter).grid(row=8, column=0, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.filter_frame, text="Circular Filter", command=self.circular_filter).grid(row=8, column=1, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.filter_frame, text="Cone Filter", command=self.cone_filter).grid(row=8, column=2, padx=8, pady=4, sticky='ew')
 
         # Add tooltips for new buttons after creation
         self._add_tooltip(median_btn, "Apply Median Filter Option", "Remove salt-and-pepper noise or highlight min/max values. Use when image has random black/white dots or to smooth while preserving edges.")
         self._add_tooltip(sobel_btn, "Apply Sobel Edge Detection", "Detect edges in the image using the Sobel method. Use to highlight boundaries and transitions in brightness.")
-        # Row 2: Laplacian & Canny
-        ttk.Button(self.filter_frame, text="Laplacian Edge", command=self.laplace_filter).grid(row=2, column=0, padx=8, pady=6, sticky='w')
-        ttk.Button(self.filter_frame, text="Canny Edge", command=self.canny_edge).grid(row=2, column=1, padx=8, pady=6, sticky='w')
-
-        # Row 3: Prewitt & Sharpen
-        ttk.Button(self.filter_frame, text="Prewitt Edge", command=self.prewitt_filter).grid(row=3, column=0, padx=8, pady=6, sticky='w')
-        ttk.Button(self.filter_frame, text="Sharpen", command=self.sharpen).grid(row=3, column=1, padx=8, pady=6, sticky='w')
-
-        # Row 4: Unsharp & Smooth
-        ttk.Button(self.filter_frame, text="Unsharp Mask", command=self.unsharp_filter).grid(row=4, column=0, padx=8, pady=6, sticky='w')
-        ttk.Button(self.filter_frame, text="Smooth", command=self.smooth).grid(row=4, column=1, padx=8, pady=6, sticky='w')
-
-        # Other filters further down
-        ttk.Button(self.filter_frame, text="Cone Filter", command=self.cone_filter).grid(row=5, column=0, padx=8, pady=6, sticky='w')
-        ttk.Button(self.filter_frame, text="Paramedian Filter", command=self.paramedian_filter).grid(row=5, column=1, padx=8, pady=6, sticky='w')
-        ttk.Button(self.filter_frame, text="Circular Filter", command=self.circular_filter).grid(row=6, column=0, padx=8, pady=6, sticky='w')
 
     def setup_morph_tab(self):
-        ttk.Button(self.morph_frame, text="Erosion", command=self.erosion).grid(row=0, column=0, padx=5, pady=5)
-        ttk.Button(self.morph_frame, text="Dilation", command=self.dilation).grid(row=0, column=1, padx=5, pady=5)
-        ttk.Button(self.morph_frame, text="Morphological Open", command=self.morph_open).grid(row=1, column=0, padx=5, pady=5)
-        ttk.Button(self.morph_frame, text="Morphological Close", command=self.morph_close).grid(row=1, column=1, padx=5, pady=5)
+        for c in range(2):
+            self.morph_frame.grid_columnconfigure(c, weight=1, minsize=120)
+        for r in range(3):
+            self.morph_frame.grid_rowconfigure(r, minsize=36)
+
+        morph_label = ttk.Label(self.morph_frame, text="Morphological Operations", font=("Segoe UI", 10, "bold"))
+        morph_label.grid(row=0, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        ttk.Button(self.morph_frame, text="Erosion", command=self.erosion).grid(row=1, column=0, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.morph_frame, text="Dilation", command=self.dilation).grid(row=1, column=1, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.morph_frame, text="Morphological Open", command=self.morph_open).grid(row=2, column=0, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.morph_frame, text="Morphological Close", command=self.morph_close).grid(row=2, column=1, padx=8, pady=4, sticky='ew')
 
     def setup_histogram_tab(self):
-        ttk.Button(self.histogram_frame, text="Show Histogram", command=self.show_histogram).grid(row=0, column=0, padx=5, pady=5)
-        ttk.Button(self.histogram_frame, text="Histogram Equalization", command=self.histogram_filter).grid(row=0, column=1, padx=5, pady=5)
-        ttk.Button(self.histogram_frame, text="Adaptive Hist. Eq.", command=self.adaptive_hist_eq).grid(row=1, column=0, padx=5, pady=5)
+        for c in range(2):
+            self.histogram_frame.grid_columnconfigure(c, weight=1, minsize=120)
+        for r in range(2):
+            self.histogram_frame.grid_rowconfigure(r, minsize=36)
+
+        hist_label = ttk.Label(self.histogram_frame, text="Histogram Operations", font=("Segoe UI", 10, "bold"))
+        hist_label.grid(row=0, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        ttk.Button(self.histogram_frame, text="Show Histogram", command=self.show_histogram).grid(row=1, column=0, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.histogram_frame, text="Histogram Equalization", command=self.histogram_filter).grid(row=1, column=1, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.histogram_frame, text="Adaptive Hist. Eq.", command=self.adaptive_hist_eq).grid(row=2, column=0, padx=8, pady=4, sticky='ew')
 
     def setup_threshold_tab(self):
-        ttk.Button(self.threshold_frame, text="Simple Threshold", command=self.threshold_filter).grid(row=0, column=0, padx=5, pady=5)
-        ttk.Button(self.threshold_frame, text="Adaptive Threshold", command=self.adaptive_threshold).grid(row=0, column=1, padx=5, pady=5)
-        ttk.Button(self.threshold_frame, text="Otsu's Threshold", command=self.otsu_threshold).grid(row=1, column=0, padx=5, pady=5)
+        for c in range(2):
+            self.threshold_frame.grid_columnconfigure(c, weight=1, minsize=120)
+        for r in range(2):
+            self.threshold_frame.grid_rowconfigure(r, minsize=36)
+
+        thresh_label = ttk.Label(self.threshold_frame, text="Thresholding", font=("Segoe UI", 10, "bold"))
+        thresh_label.grid(row=0, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        ttk.Button(self.threshold_frame, text="Simple Threshold", command=self.threshold_filter).grid(row=1, column=0, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.threshold_frame, text="Adaptive Threshold", command=self.adaptive_threshold).grid(row=1, column=1, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.threshold_frame, text="Otsu's Threshold", command=self.otsu_threshold).grid(row=2, column=0, padx=8, pady=4, sticky='ew')
 
     def setup_color_tab(self):
-        ttk.Button(self.color_frame, text="BGR to RGB", command=self.bgr_to_rgb).grid(row=0, column=0, padx=5, pady=5)
-        ttk.Button(self.color_frame, text="BGR to HSV", command=self.bgr_to_hsv).grid(row=0, column=1, padx=5, pady=5)
-        ttk.Button(self.color_frame, text="BGR to LAB", command=self.bgr_to_lab).grid(row=1, column=0, padx=5, pady=5)
+        for c in range(2):
+            self.color_frame.grid_columnconfigure(c, weight=1, minsize=120)
+        for r in range(2):
+            self.color_frame.grid_rowconfigure(r, minsize=36)
+
+        color_label = ttk.Label(self.color_frame, text="Color Space Conversions", font=("Segoe UI", 10, "bold"))
+        color_label.grid(row=0, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        ttk.Button(self.color_frame, text="BGR to RGB", command=self.bgr_to_rgb).grid(row=1, column=0, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.color_frame, text="BGR to HSV", command=self.bgr_to_hsv).grid(row=1, column=1, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.color_frame, text="BGR to LAB", command=self.bgr_to_lab).grid(row=2, column=0, padx=8, pady=4, sticky='ew')
 
     def setup_advanced_tab(self):
-        ttk.Button(self.advanced_frame, text="Find Contours", command=self.find_contours).grid(row=0, column=0, padx=5, pady=5)
-        ttk.Button(self.advanced_frame, text="Template Matching", command=self.template_matching).grid(row=0, column=1, padx=5, pady=5)
+        for c in range(2):
+            self.advanced_frame.grid_columnconfigure(c, weight=1, minsize=120)
+        for r in range(2):
+            self.advanced_frame.grid_rowconfigure(r, minsize=36)
+
+        adv_label = ttk.Label(self.advanced_frame, text="Advanced Operations", font=("Segoe UI", 10, "bold"))
+        adv_label.grid(row=0, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        ttk.Button(self.advanced_frame, text="Find Contours", command=self.find_contours).grid(row=1, column=0, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.advanced_frame, text="Template Matching", command=self.template_matching).grid(row=1, column=1, padx=8, pady=4, sticky='ew')
     
     # New OCR Setup
     def setup_ocr_tab(self):
-        ttk.Label(self.ocr_frame, text="OCR Operations").grid(row=0, column=0, columnspan=2, padx=5, pady=5)
-        ttk.Button(self.ocr_frame, text="Extract Text", command=self.ocr_extract).grid(row=1, column=0, padx=5, pady=5)
-        ttk.Button(self.ocr_frame, text="Draw Text Boxes", command=self.ocr_draw_boxes).grid(row=1, column=1, padx=5, pady=5)
-        ttk.Button(self.ocr_frame, text="Show Preprocessed Image", command=self.ocr_preprocess).grid(row=2, column=0, padx=5, pady=5)
+        for c in range(2):
+            self.ocr_frame.grid_columnconfigure(c, weight=1, minsize=120)
+        for r in range(2):
+            self.ocr_frame.grid_rowconfigure(r, minsize=36)
+
+        ocr_label = ttk.Label(self.ocr_frame, text="OCR Operations", font=("Segoe UI", 10, "bold"))
+        ocr_label.grid(row=0, column=0, columnspan=2, sticky="w", padx=4, pady=(8,2))
+        ttk.Button(self.ocr_frame, text="Extract Text", command=self.ocr_extract).grid(row=1, column=0, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.ocr_frame, text="Draw Text Boxes", command=self.ocr_draw_boxes).grid(row=1, column=1, padx=8, pady=4, sticky='ew')
+        ttk.Button(self.ocr_frame, text="Show Preprocessed Image", command=self.ocr_preprocess).grid(row=2, column=0, padx=8, pady=4, sticky='ew')
 
 
     def on_tab_changed(self, event):
@@ -715,20 +802,17 @@ class App:
     # OCR Callback Methods
     def ocr_extract(self):
         if self.isImageInstantiated:
+            # Always use automatic language detection, default to 'eng' for OCR
+            self.img.ocr_language = 'eng'
             self.img.all_filters = select_filter('ocr_extract', True)
             self.img.update()
-
             detected_lang = self.img.detect_language()
             self.ocr_text_display.delete(1.0, tk.END)
-            self.ocr_text_display.insert(1.0, f"🌐 Language: {detected_lang}\n\n{'='*40}\n\n{self.img.ocr_text}")
-
-        if hasattr(self, 'ocr_text_display'):
-            detected_lang = self.img.detect_language()
-            self.ocr_text_display.delete(1.0, tk.END)
-            self.ocr_text_display.insert(1.0, f"Detected Language: {detected_lang}\n\n{self.img.ocr_text}")
+            self.ocr_text_display.insert(1.0, f"🌐 Detected Language: {detected_lang}\n\n{'='*40}\n\n{self.img.ocr_text}")
 
     def ocr_draw_boxes(self):
         if self.isImageInstantiated:
+            self.img.ocr_language = 'eng'
             self.img.all_filters = select_filter('ocr_boxes', True)
             self.img.update()
 

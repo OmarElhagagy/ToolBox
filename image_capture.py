@@ -26,6 +26,23 @@ except Exception as e:
     TESSERACT_AVAILABLE = False
     print(f"Warning: Tesseract config failed: {e}")
 
+
+# NEW CODE HERE:
+def get_available_languages():
+    """Get list of available Tesseract languages"""
+    if not TESSERACT_AVAILABLE:
+        return ['eng']
+    try:
+        tessdata_path = r"C:\Program Files\Tesseract-OCR\tessdata"
+        import os
+        langs = []
+        for file in os.listdir(tessdata_path):
+            if file.endswith('.traineddata'):
+                langs.append(file.replace('.traineddata', ''))
+        return sorted(langs) if langs else ['eng']
+    except:
+        return ['eng']
+
 class ImageCap:
     def __init__(self, window=None):
         self.noise_type = 'both'  # default
@@ -53,66 +70,54 @@ class ImageCap:
 
 
     def update_panel(self, original_image, filtered_image):
-        # Dynamically determine available size for image display
-        master = self.window if self.window is not None else None
-
-        # Determine available width and height for image display
-        avail_width, avail_height = 600, 600
-        if master is not None:
-            try:
-                master.update_idletasks()
-                width = master.winfo_width()
-                height = master.winfo_height()
-                # Deduct some space for controls (e.g., 250px height, 400px width)
-                avail_width = max(width - 420, 200)
-                avail_height = max(height - 300, 200)
-            except Exception:
-                pass
-
-        def resize_for_display(img, max_w=avail_width, max_h=avail_height):
-            h, w = img.shape[:2]
-            scale = min(max_w / w, max_h / h, 1.0)  # Don't upscale
-            new_w, new_h = int(w * scale), int(h * scale)
-            return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
-
-        original_image = resize_for_display(original_image)
-        filtered_image = resize_for_display(filtered_image)
-
-        if len(original_image.shape) == 2:
-            original_image = cv2.cvtColor(original_image, cv2.COLOR_GRAY2RGB)
-        if len(filtered_image.shape) == 2:
-            filtered_image = cv2.cvtColor(filtered_image, cv2.COLOR_GRAY2RGB)
-
-        original_image = np.clip(original_image, 0, 255).astype(np.uint8)
-        filtered_image = np.clip(filtered_image, 0, 255).astype(np.uint8)
-
-        original_pil = PIL.Image.fromarray(original_image)
-        filtered_pil = PIL.Image.fromarray(filtered_image)
-
-        original_tk = PIL.ImageTk.PhotoImage(original_pil)
-        filtered_tk = PIL.ImageTk.PhotoImage(filtered_pil)
-
-        master = self.window if self.window is not None else None
-
-        if self.panelA is None or self.panelB is None:
-            self.panelA = tkinter.Label(master, image=original_tk)
-            self.panelA.image = original_tk
-            self.panelA.grid(row=3, column=2, padx=10, pady=10, sticky='nsew')
-
-            self.panelB = tkinter.Label(master, image=filtered_tk)
-            self.panelB.image = filtered_tk
-            self.panelB.grid(row=3, column=3, padx=10, pady=10, sticky='nsew')
-            try:
-                master.grid_columnconfigure(2, weight=1)
-                master.grid_columnconfigure(3, weight=1)
-                master.grid_rowconfigure(3, weight=1)
-            except Exception:
-                pass
+        # Use the dedicated image_display_frame for image placement
+        master = None
+        if hasattr(self.window, 'image_display_frame'):
+            master = self.window.image_display_frame
         else:
-            self.panelA.configure(image=original_tk)
-            self.panelB.configure(image=filtered_tk)
-            self.panelA.image = original_tk
-            self.panelB.image = filtered_tk
+            master = self.window
+
+        # Get available size for image display
+        master.update_idletasks()
+        width = master.winfo_width()
+        height = master.winfo_height()
+        # Fallback if not yet rendered
+        if width < 100 or height < 100:
+            width, height = 800, 500
+        # Reserve some space for padding
+        width = max(200, width - 40)
+        height = max(200, height - 40)
+
+        def resize_to_fit(img, maxsize=(width//2, height)):
+            h, w = img.shape[:2]
+            scale = min(maxsize[0]/w, maxsize[1]/h, 1.0)
+            new_w, new_h = int(w*scale), int(h*scale)
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB) if len(img.shape) == 2 else img
+            img = np.clip(img, 0, 255).astype(np.uint8)
+            pil_img = PIL.Image.fromarray(img)
+            pil_img = pil_img.resize((new_w, new_h), PIL.Image.LANCZOS)
+            return PIL.ImageTk.PhotoImage(pil_img)
+
+        original_tk = resize_to_fit(original_image)
+        filtered_tk = resize_to_fit(filtered_image)
+
+        # Remove old panels if they exist (to avoid overlap)
+        if self.panelA is not None:
+            self.panelA.destroy()
+        if self.panelB is not None:
+            self.panelB.destroy()
+
+        self.panelA = tkinter.Label(master, image=original_tk)
+        self.panelA.image = original_tk
+        self.panelA.grid(row=0, column=0, padx=10, pady=10, sticky='nsew')
+
+        self.panelB = tkinter.Label(master, image=filtered_tk)
+        self.panelB.image = filtered_tk
+        self.panelB.grid(row=0, column=1, padx=10, pady=10, sticky='nsew')
+
+        master.grid_columnconfigure(0, weight=1)
+        master.grid_columnconfigure(1, weight=1)
+        master.grid_rowconfigure(0, weight=1)
 
     def detect_language(self):
         """Detect language of extracted OCR text"""
@@ -187,13 +192,11 @@ class ImageCap:
         return processed
 
     def perform_ocr(self, lang='eng', preprocess=True):
-        """Extract text from image using Tesseract OCR"""
+        """Extract text from image using Tesseract OCR, supporting multi-language"""
         if not TESSERACT_AVAILABLE:
             return "Tesseract OCR not installed. Install: pip install pytesseract"
-        
         if not hasattr(self, 'current_image') or self.current_image is None:
             return "No image loaded"
-        
         try:
             # Preprocess image if requested
             if preprocess:
@@ -203,19 +206,11 @@ class ImageCap:
                     img_for_ocr = cv2.cvtColor(self.current_image, cv2.COLOR_RGB2GRAY)
                 else:
                     img_for_ocr = self.current_image
-            
-            # Perform OCR with detailed data
+            # Pass selected language to pytesseract
             custom_config = r'--oem 3 --psm 6'
-            self.ocr_data = pytesseract.image_to_data(img_for_ocr, lang=lang, 
-                                                       config=custom_config, 
-                                                       output_type=Output.DICT)
-            
-            # Extract text
-            self.ocr_text = pytesseract.image_to_string(img_for_ocr, lang=lang, 
-                                                         config=custom_config)
-            
+            self.ocr_data = pytesseract.image_to_data(img_for_ocr, lang=lang, config=custom_config, output_type=Output.DICT)
+            self.ocr_text = pytesseract.image_to_string(img_for_ocr, lang=lang, config=custom_config)
             return self.ocr_text.strip() if self.ocr_text else "No text detected"
-            
         except Exception as e:
             return f"OCR Error: {str(e)}"
 
@@ -262,12 +257,14 @@ class ImageCap:
             self.filtered_image = self.current_image.copy()
 
         elif get_f('ocr_extract'):
-            text = self.perform_ocr(preprocess=True)
+            lang = getattr(self, 'ocr_language', 'eng')
+            text = self.perform_ocr(lang=lang, preprocess=True)
             print(f"\n=== OCR Results ===\n{text}\n=================\n")
             self.filtered_image = self.current_image.copy()
 
         elif get_f('ocr_boxes'):
-            self.perform_ocr(preprocess=True)
+            lang = getattr(self, 'ocr_language', 'eng')
+            self.perform_ocr(lang=lang, preprocess=True)
             self.filtered_image = self.draw_ocr_boxes(confidence_threshold=60)
             self.current_image = self.filtered_image.copy()
 
