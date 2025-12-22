@@ -35,6 +35,30 @@ def select_filter(filter_name, status):
     return filter_dic
 
 class App:
+    def compress_analyze_func_lossless(self):
+        if self.isImageInstantiated:
+            try:
+                # Lossless compression (PNG)
+                encoded, orig_shape = self.img.compress_image_lossless()
+                if encoded is None:
+                    self.compression_metrics_label.config(text="Lossless compression failed.")
+                    return
+                reconstructed = self.img.decompress_image_lossless(encoded, orig_shape)
+                original = self.img.current_image
+                if reconstructed.shape != original.shape:
+                    reconstructed = cv2.resize(reconstructed, (original.shape[1], original.shape[0]), interpolation=cv2.INTER_LINEAR)
+                original_size = original.nbytes
+                compressed_size = encoded.nbytes
+                cr = original_size / compressed_size if compressed_size > 0 else 0
+                rmse = self.img.calculate_rmse(original, reconstructed)
+                psnr = self.img.calculate_psnr(original, reconstructed)
+                metrics_text = f"Compression Ratio: {cr:.2f}\nRMSE: {rmse:.2f}\nPSNR: {psnr:.2f} dB"
+                self.compression_metrics_label.config(text=metrics_text)
+                self.img.filtered_image = reconstructed.copy()
+                self.img.current_image = self.img.filtered_image.copy()
+                self.img.update_panel(self.img.original_image, self.img.filtered_image)
+            except Exception as e:
+                self.compression_metrics_label.config(text="Lossless compression error.")
     isImageInstantiated = False
     isVideoInstantiated = False
 
@@ -380,7 +404,51 @@ class App:
         self.quality_entry.insert(0, "50")
         self.quality_entry.grid(row=1, column=1, padx=5, pady=5, sticky='w')
 
-        ttk.Button(self.compression_frame, text="Compress & Analyze", command=self.compress_analyze_func).grid(row=2, column=0, columnspan=2, padx=8, pady=4, sticky='ew')
+        # Button with lossy compression info
+        compress_btn = ttk.Button(self.compression_frame, text="Compress & Analyze (Lossy)", command=self.compress_analyze_func)
+        compress_btn.grid(row=2, column=0, padx=8, pady=4, sticky='ew')
+        # Tooltip for lossy compression
+        def show_tooltip_lossy(event):
+            if not hasattr(self, '_compress_tooltip_lossy'):
+                self._compress_tooltip_lossy = tk.Toplevel(self.compression_frame)
+                self._compress_tooltip_lossy.wm_overrideredirect(True)
+                label = tk.Label(
+                    self._compress_tooltip_lossy,
+                    text="JPEG-like color compression: uses DCT and quantization on color channels. The reconstructed image will be similar but not identical to the original.",
+                    background="#ffffe0", relief="solid", borderwidth=1, font=("Segoe UI", 9))
+                label.pack(ipadx=1)
+            x = event.x_root + 10
+            y = event.y_root + 10
+            self._compress_tooltip_lossy.wm_geometry(f"+{x}+{y}")
+            self._compress_tooltip_lossy.deiconify()
+        def hide_tooltip_lossy(event):
+            if hasattr(self, '_compress_tooltip_lossy'):
+                self._compress_tooltip_lossy.withdraw()
+        compress_btn.bind("<Enter>", show_tooltip_lossy)
+        compress_btn.bind("<Leave>", hide_tooltip_lossy)
+
+        # Button with lossless compression info
+        compress_btn_lossless = ttk.Button(self.compression_frame, text="Compress & Analyze (Lossless)", command=self.compress_analyze_func_lossless)
+        compress_btn_lossless.grid(row=2, column=1, padx=8, pady=4, sticky='ew')
+        # Tooltip for lossless compression
+        def show_tooltip_lossless(event):
+            if not hasattr(self, '_compress_tooltip_lossless'):
+                self._compress_tooltip_lossless = tk.Toplevel(self.compression_frame)
+                self._compress_tooltip_lossless.wm_overrideredirect(True)
+                label = tk.Label(
+                    self._compress_tooltip_lossless,
+                    text="Lossless PNG compression: preserves all color information. The reconstructed image will be exactly identical to the original.",
+                    background="#e0ffe0", relief="solid", borderwidth=1, font=("Segoe UI", 9))
+                label.pack(ipadx=1)
+            x = event.x_root + 10
+            y = event.y_root + 10
+            self._compress_tooltip_lossless.wm_geometry(f"+{x}+{y}")
+            self._compress_tooltip_lossless.deiconify()
+        def hide_tooltip_lossless(event):
+            if hasattr(self, '_compress_tooltip_lossless'):
+                self._compress_tooltip_lossless.withdraw()
+        compress_btn_lossless.bind("<Enter>", show_tooltip_lossless)
+        compress_btn_lossless.bind("<Leave>", hide_tooltip_lossless)
 
         # Label to show compression metrics
         self.compression_metrics_label = ttk.Label(self.compression_frame, text="", font=("Segoe UI", 9))
@@ -424,12 +492,13 @@ class App:
     def snapshot(self):
         import cv2
         if self.isImageInstantiated:
-            cv2.imwrite(path + r"\image-" + time.strftime("%d-%m-%Y-%H-%M-%S") + '.jpg', 
-                       cv2.cvtColor(self.img.filtered_image, cv2.COLOR_RGB2BGR))
-            print('Image saved!')
+            save_path = path + r"\image-" + time.strftime("%d-%m-%Y-%H-%M-%S") + '.jpg'
+            cv2.imwrite(save_path, cv2.cvtColor(self.img.filtered_image, cv2.COLOR_RGB2BGR))
+            print(f'Image saved at: {save_path}')
         elif self.isVideoInstantiated:
-            cv2.imwrite(path + r"\image-" + time.strftime("%d-%m-%Y-%H-%M-%S") + '.jpg', self.vid.frame)
-            print('Image saved!')
+            save_path = path + r"\image-" + time.strftime("%d-%m-%Y-%H-%M-%S") + '.jpg'
+            cv2.imwrite(save_path, self.vid.frame)
+            print(f'Image saved at: {save_path}')
 
     def reset_original(self):
         if self.isImageInstantiated:
@@ -917,35 +986,36 @@ class App:
     def compress_analyze_func(self):
         if self.isImageInstantiated:
             try:
-                quality = int(self.quality_entry.get())
-                quality = max(1, min(100, quality))  # Clamp to 1-100
-                self.img.compression_quality = quality
-                self.img.all_filters = select_filter('compress_analyze', True)
-                # Call update and capture metrics from img
-                # Patch: monkey-patch print to capture output
-                import io, sys
-                buf = io.StringIO()
-                old_stdout = sys.stdout
-                sys.stdout = buf
-                self.img.update()
-                sys.stdout = old_stdout
-                output = buf.getvalue()
-                # Parse metrics from output
-                cr, rmse, psnr = None, None, None
-                for line in output.splitlines():
-                    if "Compression Ratio" in line:
-                        cr = line.split(":", 1)[1].strip()
-                    elif "RMSE" in line:
-                        rmse = line.split(":", 1)[1].strip()
-                    elif "PSNR" in line:
-                        psnr = line.split(":", 1)[1].strip()
-                metrics_text = ""
-                if cr and rmse and psnr:
-                    metrics_text = f"Compression Ratio: {cr}\nRMSE: {rmse}\nPSNR: {psnr}"
-                else:
-                    metrics_text = "Compression analysis failed."
-                self.compression_metrics_label.config(text=metrics_text)
-            except Exception as e:
-                self.compression_metrics_label.config(text="Invalid quality value")
+                quality_str = self.quality_entry.get()
+                quality = int(quality_str)
+            except ValueError:
+                self.compression_metrics_label.config(text="Invalid quality value: must be an integer between 1 and 100.")
+                return
+            if not (1 <= quality <= 100):
+                self.compression_metrics_label.config(text="Invalid quality value: must be between 1 and 100.")
+                return
+            self.img.compression_quality = quality
+            self.img.all_filters = select_filter('compress_analyze', True)
+            import io, sys
+            buf = io.StringIO()
+            old_stdout = sys.stdout
+            sys.stdout = buf
+            self.img.update()
+            sys.stdout = old_stdout
+            output = buf.getvalue()
+            cr, rmse, psnr = None, None, None
+            for line in output.splitlines():
+                if "Compression Ratio" in line:
+                    cr = line.split(":", 1)[1].strip()
+                elif "RMSE" in line:
+                    rmse = line.split(":", 1)[1].strip()
+                elif "PSNR" in line:
+                    psnr = line.split(":", 1)[1].strip()
+            metrics_text = ""
+            if cr and rmse and psnr:
+                metrics_text = f"Compression Ratio: {cr}\nRMSE: {rmse}\nPSNR: {psnr}"
+            else:
+                metrics_text = "Compression analysis failed."
+            self.compression_metrics_label.config(text=metrics_text)
 
 App(tk.Tk(), 'Enhanced ToolBox')

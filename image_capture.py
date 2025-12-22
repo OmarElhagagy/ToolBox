@@ -44,6 +44,27 @@ def get_available_languages():
         return ['eng']
 
 class ImageCap:
+    def compress_image_lossless(self):
+        """
+        Compress the current image using PNG encoding (lossless, color supported).
+        Returns the compressed byte array and original shape.
+        """
+        img = self.current_image
+        # PNG encoding (lossless, color)
+        success, encoded = cv2.imencode('.png', img)
+        if not success:
+            return None, img.shape
+        return encoded, img.shape
+
+    def decompress_image_lossless(self, encoded, shape):
+        """
+        Decompress PNG-encoded image back to numpy array (color supported).
+        """
+        decoded = cv2.imdecode(encoded, cv2.IMREAD_UNCHANGED)
+        # Ensure shape matches original
+        if decoded.shape != shape:
+            decoded = cv2.resize(decoded, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
+        return decoded
     def __init__(self, window=None):
         self.noise_type = 'both'  # default
         self.window = window
@@ -71,6 +92,11 @@ class ImageCap:
 
 
     def calculate_compression_ratio(self, original, compressed):
+        """
+        Calculate the compression ratio between the original and compressed images.
+        Note: The compression method used in this toolbox is lossy (DCT with quantization),
+        so the reconstructed image will not be identical to the original.
+        """
         return original.nbytes / compressed.nbytes if compressed.nbytes > 0 else 0
 
     def calculate_rmse(self, original, reconstructed):
@@ -237,52 +263,54 @@ class ImageCap:
         return 10 * np.log10((255 ** 2) / mse)
 
     def compress_image(self, quality=50):
-        """Simple block-based compression using DCT"""
-        if len(self.current_image.shape) == 3:
-            gray = cv2.cvtColor(self.current_image, cv2.COLOR_RGB2GRAY)
-        else:
-            gray = self.current_image
-        
-        h, w = gray.shape
-        # Pad to multiple of 8
+        """
+        JPEG-like color image compression using DCT and quantization on YCbCr channels.
+        Returns compressed blocks for each channel, original shape, and padded shape.
+        """
+        img = self.current_image
+        if len(img.shape) == 2:
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+        # Convert to YCbCr
+        img_ycbcr = cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb)
+        h, w, c = img_ycbcr.shape
         pad_h = (8 - h % 8) % 8
         pad_w = (8 - w % 8) % 8
-        padded = np.pad(gray, ((0, pad_h), (0, pad_w)), mode='edge')
-        
-        compressed_blocks = []
-        # Process 8x8 blocks
-        for i in range(0, padded.shape[0], 8):
-            for j in range(0, padded.shape[1], 8):
-                block = padded[i:i+8, j:j+8].astype(np.float32)
-                # DCT transform
-                dct_block = cv2.dct(block)
-                # Quantization (higher quality = less compression)
-                quant_factor = 100 - quality
-                quantized = np.round(dct_block / (1 + quant_factor / 10))
-                compressed_blocks.append(quantized)
-        
+        padded = np.pad(img_ycbcr, ((0, pad_h), (0, pad_w), (0, 0)), mode='edge')
+        compressed_blocks = [[] for _ in range(3)]
+        # Process each channel separately
+        for ch in range(3):
+            channel = padded[:, :, ch]
+            for i in range(0, padded.shape[0], 8):
+                for j in range(0, padded.shape[1], 8):
+                    block = channel[i:i+8, j:j+8].astype(np.float32)
+                    dct_block = cv2.dct(block)
+                    quant_factor = 100 - quality
+                    quantized = np.round(dct_block / (1 + quant_factor / 10))
+                    compressed_blocks[ch].append(quantized)
         return compressed_blocks, (h, w), (padded.shape[0], padded.shape[1])
 
     def decompress_image(self, compressed_blocks, original_shape, padded_shape, quality=50):
-        """Reconstruct image from compressed blocks"""
+        """
+        Reconstruct color image from JPEG-like compressed blocks (YCbCr channels).
+        """
         h_pad, w_pad = padded_shape
-        reconstructed = np.zeros((h_pad, w_pad), dtype=np.float32)
-        
+        reconstructed = np.zeros((h_pad, w_pad, 3), dtype=np.float32)
         quant_factor = 100 - quality
-        block_idx = 0
-        for i in range(0, h_pad, 8):
-            for j in range(0, w_pad, 8):
-                # Dequantize
-                dequantized = compressed_blocks[block_idx] * (1 + quant_factor / 10)
-                # Inverse DCT
-                idct_block = cv2.idct(dequantized)
-                reconstructed[i:i+8, j:j+8] = idct_block
-                block_idx += 1
-        
+        for ch in range(3):
+            block_idx = 0
+            for i in range(0, h_pad, 8):
+                for j in range(0, w_pad, 8):
+                    dequantized = compressed_blocks[ch][block_idx] * (1 + quant_factor / 10)
+                    idct_block = cv2.idct(dequantized)
+                    reconstructed[i:i+8, j:j+8, ch] = idct_block
+                    block_idx += 1
         # Remove padding
         h, w = original_shape
-        reconstructed = reconstructed[:h, :w]
-        return np.clip(reconstructed, 0, 255).astype(np.uint8)
+        reconstructed = reconstructed[:h, :w, :]
+        # Convert back to RGB
+        reconstructed = np.clip(reconstructed, 0, 255).astype(np.uint8)
+        reconstructed_rgb = cv2.cvtColor(reconstructed, cv2.COLOR_YCrCb2RGB)
+        return reconstructed_rgb
 
     def perform_ocr(self, lang='eng', preprocess=True):
         """Extract text from image using Tesseract OCR, supporting multi-language"""
@@ -693,28 +721,24 @@ class ImageCap:
             compressed_blocks, orig_shape, padded_shape = self.compress_image(quality)
             # Decompress
             reconstructed = self.decompress_image(compressed_blocks, orig_shape, padded_shape, quality)
-            
-            # Calculate metrics
-            if len(self.current_image.shape) == 3:
-                gray_orig = cv2.cvtColor(self.current_image, cv2.COLOR_RGB2GRAY)
-            else:
-                gray_orig = self.current_image
-            
-            # Approximate compression ratio (blocks store fewer values)
-            original_size = gray_orig.nbytes
-            compressed_size = len(compressed_blocks) * 64 * 4  # 64 values per block, 4 bytes per float
-            cr = original_size / compressed_size
-            rmse = self.calculate_rmse(gray_orig, reconstructed)
-            psnr = self.calculate_psnr(gray_orig, reconstructed)
-            
+            # Ensure both images are color and same shape
+            original = self.current_image
+            if reconstructed.shape != original.shape:
+                reconstructed = cv2.resize(reconstructed, (original.shape[1], original.shape[0]), interpolation=cv2.INTER_LINEAR)
+            # Compression ratio: compare original and compressed sizes
+            original_size = original.nbytes
+            num_blocks = len(compressed_blocks[0])
+            compressed_size = num_blocks * 64 * 4 * 3  # 64 values per block, 4 bytes per float, 3 channels
+            cr = original_size / compressed_size if compressed_size > 0 else 0
+            rmse = self.calculate_rmse(original, reconstructed)
+            psnr = self.calculate_psnr(original, reconstructed)
             print(f"\n=== Compression Analysis ===")
             print(f"Quality: {quality}%")
             print(f"Compression Ratio: {cr:.2f}:1")
             print(f"RMSE: {rmse:.2f}")
             print(f"PSNR: {psnr:.2f} dB")
             print(f"===========================\n")
-            
-            self.filtered_image = cv2.cvtColor(reconstructed, cv2.COLOR_GRAY2RGB)
+            self.filtered_image = reconstructed.copy()
             self.current_image = self.filtered_image.copy()
 
         elif get_f('bit_plane'):
